@@ -1,15 +1,16 @@
-import base64
-import json
-import random
-import re
-import subprocess
 import sys
+import re
 import time
+from subprocess import run, PIPE, TimeoutExpired
+import json
+import base64
 from collections import defaultdict
+import random
 
 import requests
 
-# Something like this: python3 new_db_checker.py core "sql {wiki} -- " s8 --important-only -v -prod
+# Something like this: python3 new_db_checker.py core "sql {wiki} -- " s8 --important-only -prod
+# for localhost: python3 new_db_checker.py core "sudo mysql -Drepo " s8 --important-only -v
 
 
 def debug(*args):
@@ -25,13 +26,18 @@ type_to_path_mapping = {
     'abusefilter': 'mediawiki/extensions/AbuseFilter/+/master/abusefilter.tables.sqlite.sql',
     'flaggedrevs': 'mediawiki/extensions/FlaggedRevs/+/master/backend/schema/mysql/FlaggedRevs.sql',
 }
+type_to_path_mapping_abstracts = {
+    'core': 'mediawiki/core/+/master/maintenance/tables.json',
+}
 by_db_drifts = {}
 by_drift_type_drifts = defaultdict(dict)
 
 
 def get_a_wiki_from_shard(shard):
     debug('Getting a wiki from shard:', shard)
-    url = gerrit_url + 'operations/mediawiki-config/+/master/dblists/{shard}.dblist?format=TEXT'.format(shard=shard)
+    url = gerrit_url + \
+        'operations/mediawiki-config/+/master/dblists/{shard}.dblist?format=TEXT'.format(
+            shard=shard)
     dbs = base64.b64decode(requests.get(url).text).decode('utf-8').split('\n')
     random.shuffle(dbs)
     for line in dbs:
@@ -57,8 +63,8 @@ def add_to_drifts(shard, db, table, second, drift_type):
         f.write(json.dumps(by_drift_type_drifts, indent=4, sort_keys=True))
 
 
-def get_sql_from_gerrit(type_):
-    url = gerrit_url + '{0}?format=TEXT'.format(type_to_path_mapping[type_])
+def get_sql_from_gerrit(url):
+    url = gerrit_url + '{0}?format=TEXT'.format(url)
     return base64.b64decode(requests.get(url).text).decode('utf-8')
 
 
@@ -102,7 +108,7 @@ def dd(d1, d2, ctx=""):
 
 
 def parse_sql(sql):
-    result = {}
+    result = []
     sql = sql.replace('IF NOT EXISTS ', '')
     for table_chunk in sql.split('CREATE TABLE '):
         table_chunk = table_chunk.lower()
@@ -143,36 +149,16 @@ def parse_sql(sql):
             table_structure_real[line.split(' ')[0]] = {
                 'type': real_type, 'config': ' '.join(line.split(' ')[2:])}
 
-            result[table_name] = {
-                'structure': table_structure_real, 'indexes': indexes}
+        result.append({
+            'structure': table_structure_real, 'indexes': indexes, 'name': table_name})
 
     return result
 
 
-def compare_table_with_prod(shard, host, table_name, expected_table_structure, sql_command):
-    port = None
-    if host != 'localhost':
-        if table_name == 'searchindex':
-            return {}
-        if re.search(r' \-\-(?: |$)', sql_command):
-            sql_command = re.split(r' \-\-(?: |$)', sql_command)[
-                0] + ' --host ' + host + ' -- ' + re.split(r' \-\-(?: |$)', sql_command)[1]
-        if ':' in host:
-            port = host.split(':')[1]
-            host = host.split(':')[0]
-        host += '.eqiad.wmnet'
-    debug('Checking table ', table_name)
-    if port:
-        sql_command += ' -P ' + port
-    debug('Running: ', sql_command + ' -h %s -e "DESC %s;"' % (host, table_name))
-    res = subprocess.run(sql_command + ' -h %s -e "DESC %s;"' % (host, table_name),
-                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    if res.stderr and res.stderr.decode('utf-8'):
-        return {}
-    res = res.stdout.decode('utf-8')
+def compare_table_with_prod(shard, host, table_name, expected_table_structure, table_sql, table_indexes):
     fields_in_prod = []
     return_result = {'fields': {}}
-    for line in res.split('\n'):
+    for line in table_sql:
         if line.startswith('ERROR'):
             return return_result
         if not line or line.startswith('Field'):
@@ -181,7 +167,8 @@ def compare_table_with_prod(shard, host, table_name, expected_table_structure, s
         fields_in_prod.append(field_structure[0])
         name = field_structure[0]
         if name not in expected_table_structure['structure']:
-            add_to_drifts(shard, host, table_name, name, 'field-mismatch-prod-extra')
+            add_to_drifts(shard, host, table_name, name,
+                          'field-mismatch-prod-extra')
             continue
         return_result['fields'][field_structure[0]] = field_structure[1]
         if '--important-only' in sys.argv:
@@ -199,15 +186,15 @@ def compare_table_with_prod(shard, host, table_name, expected_table_structure, s
 
             if actual_size and expected_size and actual_size != expected_size:
                 add_to_drifts(shard, host, table_name, name, 'field-size-mismatch',
-                      expected_size + ' ' + actual_size)
+                              expected_size + ' ' + actual_size)
             if (field_structure[1] + expected_type).count(' unsigned') == 1:
                 add_to_drifts(shard, host, table_name, name, 'field-unsigned-mismatch',
-                      field_structure[1] + ' ' + expected_type)
+                              field_structure[1] + ' ' + expected_type)
             actual_type = field_structure[1].split('(')[0].split(' ')[0]
             expected_type = expected_type.split('(')[0].split(' ')[0]
             if actual_type != expected_type:
                 add_to_drifts(shard, host, table_name, name, 'field-type-mismatch',
-                      expected_type + ' ' + actual_type)
+                              expected_type + ' ' + actual_type)
         expected_config = expected_table_structure['structure'][name]['config']
         if (field_structure[2] == 'no' and 'not null' not in expected_config) or (field_structure[2] == 'yes' and 'not null' in expected_config):
             add_to_drifts(shard, host, table_name, name, 'field-null-mismatch')
@@ -224,16 +211,12 @@ def compare_table_with_prod(shard, host, table_name, expected_table_structure, s
         # print(expected_config)
     for field in expected_table_structure['structure']:
         if field not in fields_in_prod:
-            add_to_drifts(shard, host, table_name, field, 'field-mismatch-codebase-extra')
+            add_to_drifts(shard, host, table_name, field,
+                          'field-mismatch-codebase-extra')
 
-    res = subprocess.run(sql_command + ' -h %s -e "SHOW INDEX FROM %s;"' % (host, table_name),
-                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    if res.stderr and res.stderr.decode('utf-8'):
-        return return_result
-    res = res.stdout.decode('utf-8')
     return_result['indexes'] = {}
     indexes = {}
-    for line in res.split('\n'):
+    for line in table_indexes:
         if line.startswith('ERROR'):
             return return_result
         if not line or line.startswith('Table'):
@@ -254,20 +237,183 @@ def compare_table_with_prod(shard, host, table_name, expected_table_structure, s
         if index not in expected_indexes:
             if index == 'tmp1':
                 print('wtf')
-            add_to_drifts(shard, host, table_name, index, 'index-mismatch-prod-extra')
+            add_to_drifts(shard, host, table_name, index,
+                          'index-mismatch-prod-extra')
             continue
         if indexes[index]['unique'] != expected_indexes[index]['unique']:
-            add_to_drifts(shard, host, table_name, index, 'index-uniqueness-mismatch')
+            add_to_drifts(shard, host, table_name, index,
+                          'index-uniqueness-mismatch')
         expected_columns = expected_indexes[index]['columns'].replace(' ', '')
         expected_columns = re.sub(r'\(.+?\)', '', expected_columns)
         if ','.join(indexes[index]['columns']) != expected_columns:
-            add_to_drifts(shard, host, table_name, index, 'index-columns-mismatch')
+            add_to_drifts(shard, host, table_name, index,
+                          'index-columns-mismatch')
 
     for index in expected_indexes:
         if index not in indexes:
-            add_to_drifts(shard, host, table_name, index, 'index-mismatch-code-extra')
+            add_to_drifts(shard, host, table_name, index,
+                          'index-mismatch-code-extra')
 
     return return_result
+
+
+def get_table_structure_sql(host, sql_command, table_name):
+    port = None
+    if host != 'localhost':
+        if re.search(r' \-\-(?: |$)', sql_command):
+            sql_command = re.split(r' \-\-(?: |$)', sql_command)[
+                0] + ' --host ' + host + ' -- ' + re.split(r' \-\-(?: |$)', sql_command)[1]
+        if ':' in host:
+            port = host.split(':')[1]
+            host = host.split(':')[0]
+        host += '.eqiad.wmnet'
+    debug('Checking table ', table_name)
+    if port:
+        sql_command += ' -P ' + port
+    command = 'timeout 6 ' + sql_command + ' -h %s -e "DESC %s;"' % (host, table_name)
+    debug('Running:', command)
+    try:
+        res = run(command, stdin=PIPE, stdout=PIPE, shell=True, stderr=PIPE, timeout=5)
+    except TimeoutExpired:
+        debug('First timeout has reached')
+        try:
+            res = run(command, stdin=PIPE, stdout=PIPE, shell=True, stderr=PIPE, timeout=5)
+        except:
+            return {}
+    if res.stderr and res.stderr.decode('utf-8'):
+        return {}
+    return res.stdout.decode('utf-8').split('\n')
+
+
+def get_table_indexes_sql(host, sql_command, table_name):
+    command = 'timeout 6 ' + sql_command + ' -h %s -e "SHOW INDEX FROM %s;"' % (host, table_name)
+    debug('Running:', command)
+    try:
+        res = run(command, stdin=PIPE, stdout=PIPE, shell=True, stderr=PIPE, timeout=5)
+    except TimeoutExpired:
+        debug('First timeout has reached')
+        try:
+            res = run(command, stdin=PIPE, stdout=PIPE, shell=True, stderr=PIPE, timeout=5)
+        except TimeoutExpired:
+            return {}
+    if res.stderr and res.stderr.decode('utf-8'):
+        return {}
+    return res.stdout.decode('utf-8').split('\n')
+
+
+def compare_table_with_prod_abstract(shard, host, expected_table_structure, table_sql, table_indexes):
+    fields_in_prod = []
+    return_result = {'fields': {}}
+    for line in table_sql:
+        if line.startswith('ERROR'):
+            return return_result
+        if not line or line.startswith('Field'):
+            continue
+        field_structure = line.lower().split('\t')
+        fields_in_prod.append(field_structure[0])
+        name = field_structure[0]
+        expected_column = None
+        for column in expected_table_structure['columns']:
+            if column['name'] == name:
+                expected_column = column
+                break
+        else:
+            add_to_drifts(shard, host, table_name, name,
+                          'field-mismatch-prod-extra')
+            continue
+        return_result['fields'][field_structure[0]] = field_structure[1]
+        if '--important-only' in sys.argv:
+            continue
+
+        # TODO: Clean up
+        expected_type = expected_column['type'].replace(
+            'string', 'varbinary').replace('integer', 'int')
+        if expected_type != field_structure[1].replace('varchar', 'varbinary'):
+            actual_size = None
+            if '(' in field_structure[1]:
+                actual_size = field_structure[1].split('(')[1].split(')')[0]
+
+            expected_size = None
+            if '(' in expected_type:
+                expected_size = expected_type.split('(')[1].split(')')[0]
+
+            if actual_size and expected_size and actual_size != expected_size:
+                add_to_drifts(shard, host, table_name, name, 'field-size-mismatch',
+                              expected_size + ' ' + actual_size)
+            if (field_structure[1] + expected_type).count(' unsigned') == 1:
+                add_to_drifts(shard, host, table_name, name, 'field-unsigned-mismatch',
+                              field_structure[1] + ' ' + expected_type)
+            actual_type = field_structure[1].split('(')[0].split(' ')[0]
+            expected_type = expected_type.split('(')[0].split(' ')[0]
+            if actual_type != expected_type:
+                add_to_drifts(shard, host, table_name, name, 'field-type-mismatch',
+                              expected_type + ' ' + actual_type)
+        expected_config = expected_table_structure['structure'][name]['config']
+        if (field_structure[2] == 'no' and 'not null' not in expected_config) or (field_structure[2] == 'yes' and 'not null' in expected_config):
+            add_to_drifts(shard, host, table_name, name, 'field-null-mismatch')
+        # Until here
+
+    for column in expected_table_structure['columns']:
+        if column['name'] not in fields_in_prod:
+            add_to_drifts(shard, host, table_name,
+                          column['name'], 'field-mismatch-codebase-extra')
+
+    return_result['indexes'] = {}
+    indexes = {}
+    for line in table_iexpected_indexesexes:
+        if line.startswith('ERROR'):
+            return return_result
+        if not line or line.startswith('Table'):
+            continue
+        index_structure = line.lower().split('\t')
+
+        if index_structure[2] not in indexes:
+            indexes[index_structure[2]] = {
+                'unique': index_structure[1] == '0', 'columns': [index_structure[4]]}
+        else:
+            indexes[index_structure[2]]['columns'].append(index_structure[4])
+    return_result['indexes'] = indexes
+    expected_indexes = expected_table_structure['indexes']
+    for index in indexes:
+        # clean up primaries later
+        if index == 'primary':
+            continue
+        expected_index = None
+        for i in expected_indexes:
+            if i['name'] == index:
+                expected_index = i
+                break
+        else:
+            add_to_drifts(shard, host, table_name, index,
+                          'index-mismatch-prod-extra')
+            continue
+        if indexes[index]['unique'] != expected_index['unique']:
+            add_to_drifts(shard, host, table_name, index,
+                          'index-uniqueness-mismatch')
+        expected_columns = expected_index['columns']
+        if indexes[index]['columns'] != expected_columns:
+            add_to_drifts(shard, host, table_name, index,
+                          'index-columns-mismatch')
+
+    for index in expected_indexes:
+        if index['name'] not in indexes:
+            add_to_drifts(shard, host, table_name,
+                          index['name'], 'index-mismatch-code-extra')
+
+    return return_result
+
+
+def dispatching_compare_table_with_prod(shard, host, table, sql_command):
+    table_sql = get_table_structure_sql(host, sql_command, table['name'])
+    table_indexes = get_table_indexes_sql(host, sql_command, table['name'])
+    if not table_sql or not table_indexes:
+        print('no response')
+        return {}
+    if '--abstract' in sys.argv:
+        return compare_table_with_prod_abstract(
+            shard, host, table, table_sql, table_indexes)
+    return compare_table_with_prod(
+        shard, host, table['name'], table, table_sql, table_indexes)
 
 
 def handle_shard(shard, sql_data, hosts):
@@ -279,9 +425,11 @@ def handle_shard(shard, sql_data, hosts):
     for host in hosts:
         final_result[host] = {}
         for table in sql_data:
-            print(host, table)
-            final_result[host][table] = compare_table_with_prod(
-                shard, host, table, sql_data[table], sql_command)
+            if table['name'] == 'searchindex':
+                continue
+            print(host, table['name'])
+            final_result[host][table['name']] = dispatching_compare_table_with_prod(
+                shard, host, table, sql_command)
             time.sleep(1)
 
     for host in hosts:
@@ -290,14 +438,28 @@ def handle_shard(shard, sql_data, hosts):
                 dd(final_result[host][table],
                    final_result[hosts[0]][table], table + ':' + host)
 
+
 def main():
+    with open('by_db_drifts.json', 'w') as f:
+        f.write(json.dumps({}))
+    with open('by_drift_type_drifts.json', 'w') as f:
+        f.write(json.dumps({}))
     shard_mapping = get_shard_mapping()
-    if sys.argv[1].lower() in type_to_path_mapping:
-        sql = get_sql_from_gerrit(sys.argv[1].lower())
+    if '--abstract' not in sys.argv:
+        if sys.argv[1].lower() in type_to_path_mapping:
+            sql = get_sql_from_gerrit(
+                type_to_path_mapping[sys.argv[1].lower()])
+        else:
+            with open(sys.argv[1], 'r') as f:
+                sql = f.read()
+        sql_data = parse_sql(sql)
     else:
-        with open(sys.argv[1], 'r') as f:
-            sql = f.read()
-    sql_data = parse_sql(sql)
+        if sys.argv[1].lower() in type_to_path_mapping_abstracts:
+            sql_data = json.loads(get_sql_from_gerrit(
+                type_to_path_mapping_abstracts[sys.argv[1].lower()]))
+        else:
+            with open(sys.argv[1], 'r') as f:
+                sql_data = json.loads(f.read())
     if '-prod' in sys.argv:
         if sys.argv[3] == 'all':
             for shard in shard_mapping:
@@ -307,7 +469,6 @@ def main():
             handle_shard(sys.argv[3], sql_data, hosts)
     else:
         handle_shard(None, sql_data, ['localhost'])
-    
 
 
 main()

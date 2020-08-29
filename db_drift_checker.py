@@ -33,29 +33,33 @@ by_db_drifts = {}
 by_drift_type_drifts = defaultdict(dict)
 
 
-def get_a_wiki_from_shard(shard):
+def get_a_wiki_from_shard(shard, all_=False):
     debug('Getting a wiki from shard:', shard)
     url = gerrit_url + \
         'operations/mediawiki-config/+/master/dblists/{shard}.dblist?format=TEXT'.format(
             shard=shard)
     dbs = base64.b64decode(requests.get(url).text).decode('utf-8').split('\n')
     random.shuffle(dbs)
+    dbs_returning = []
     for line in dbs:
         if not line or line.startswith('#'):
             continue
         debug('Got this wiki:', line.strip())
-        return line.strip()
+        dbs_returning.append(line.strip())
+        if not all_:
+            return [line.strip()]
+    return dbs_returning
 
 
-def add_to_drifts(shard, db, table, second, drift_type):
+def add_to_drifts(shard, db, table, second, drift_type, wiki):
     drift = ' '.join([table, second, drift_type])
     if shard not in by_db_drifts:
         by_db_drifts[shard] = defaultdict(list)
-    by_db_drifts[shard][db].append(drift)
+    by_db_drifts[shard]['%s:%s' % (db, wiki)].append(drift)
 
     if shard not in by_drift_type_drifts[drift]:
         by_drift_type_drifts[drift][shard] = []
-    by_drift_type_drifts[drift][shard].append(db)
+    by_drift_type_drifts[drift][shard].append('%s:%s' % (db, wiki))
 
     with open('by_db_drifts.json', 'w') as f:
         f.write(json.dumps(by_db_drifts, indent=4, sort_keys=True))
@@ -70,15 +74,19 @@ def get_sql_from_gerrit(url):
 
 def get_shard_mapping():
     shard_mapping = {}
-    db_eqiad_data = requests.get(
-        'https://noc.wikimedia.org/dbconfig/eqiad.json').json()
-    for shard in db_eqiad_data['sectionLoads']:
+    if '--codfw' in sys.argv:
+        dc = 'codfw'
+    else:
+        dc = 'eqiad'
+    db_data = requests.get(
+        'https://noc.wikimedia.org/dbconfig/{}.json'.format(dc)).json()
+    for shard in db_data['sectionLoads']:
         cases = []
         if shard == 'DEFAULT':
             name = 's3'
         else:
             name = shard
-        for type_ in db_eqiad_data['sectionLoads'][shard]:
+        for type_ in db_data['sectionLoads'][shard]:
             cases += list(type_.keys())
         shard_mapping[name] = cases
     return shard_mapping
@@ -155,7 +163,7 @@ def parse_sql(sql):
     return result
 
 
-def compare_table_with_prod(shard, host, table_name, expected_table_structure, table_sql, table_indexes):
+def compare_table_with_prod(shard, host, table_name, expected_table_structure, table_sql, table_indexes, wiki):
     fields_in_prod = []
     return_result = {'fields': {}}
     for line in table_sql:
@@ -168,7 +176,7 @@ def compare_table_with_prod(shard, host, table_name, expected_table_structure, t
         name = field_structure[0]
         if name not in expected_table_structure['structure']:
             add_to_drifts(shard, host, table_name, name,
-                          'field-mismatch-prod-extra')
+                          'field-mismatch-prod-extra', wiki)
             continue
         return_result['fields'][field_structure[0]] = field_structure[1]
         if '--important-only' in sys.argv:
@@ -186,18 +194,18 @@ def compare_table_with_prod(shard, host, table_name, expected_table_structure, t
 
             if actual_size and expected_size and actual_size != expected_size:
                 add_to_drifts(shard, host, table_name, name, 'field-size-mismatch',
-                              expected_size + ' ' + actual_size)
+                              wiki)
             if (field_structure[1] + expected_type).count(' unsigned') == 1:
                 add_to_drifts(shard, host, table_name, name, 'field-unsigned-mismatch',
-                              field_structure[1] + ' ' + expected_type)
+                              wiki)
             actual_type = field_structure[1].split('(')[0].split(' ')[0]
             expected_type = expected_type.split('(')[0].split(' ')[0]
             if actual_type != expected_type:
                 add_to_drifts(shard, host, table_name, name, 'field-type-mismatch',
-                              expected_type + ' ' + actual_type)
+                              wiki)
         expected_config = expected_table_structure['structure'][name]['config']
         if (field_structure[2] == 'no' and 'not null' not in expected_config) or (field_structure[2] == 'yes' and 'not null' in expected_config):
-            add_to_drifts(shard, host, table_name, name, 'field-null-mismatch')
+            add_to_drifts(shard, host, table_name, name, 'field-null-mismatch', wiki)
 
         # if len(field_structure[4]) < 4:
         #    default = ''
@@ -212,7 +220,7 @@ def compare_table_with_prod(shard, host, table_name, expected_table_structure, t
     for field in expected_table_structure['structure']:
         if field not in fields_in_prod:
             add_to_drifts(shard, host, table_name, field,
-                          'field-mismatch-codebase-extra')
+                          'field-mismatch-codebase-extra', wiki)
 
     return_result['indexes'] = {}
     indexes = {}
@@ -238,21 +246,21 @@ def compare_table_with_prod(shard, host, table_name, expected_table_structure, t
             if index == 'tmp1':
                 print('wtf')
             add_to_drifts(shard, host, table_name, index,
-                          'index-mismatch-prod-extra')
+                          'index-mismatch-prod-extra', wiki)
             continue
         if indexes[index]['unique'] != expected_indexes[index]['unique']:
             add_to_drifts(shard, host, table_name, index,
-                          'index-uniqueness-mismatch')
+                          'index-uniqueness-mismatch', wiki)
         expected_columns = expected_indexes[index]['columns'].replace(' ', '')
         expected_columns = re.sub(r'\(.+?\)', '', expected_columns)
         if ','.join(indexes[index]['columns']) != expected_columns:
             add_to_drifts(shard, host, table_name, index,
-                          'index-columns-mismatch')
+                          'index-columns-mismatch', wiki)
 
     for index in expected_indexes:
         if index not in indexes:
             add_to_drifts(shard, host, table_name, index,
-                          'index-mismatch-code-extra')
+                          'index-mismatch-code-extra', wiki)
 
     return return_result
 
@@ -262,11 +270,15 @@ def get_table_structure_sql(host, sql_command, table_name):
     if host != 'localhost':
         if re.search(r' \-\-(?: |$)', sql_command):
             sql_command = re.split(r' \-\-(?: |$)', sql_command)[
-                0] + ' --host ' + host + ' -- ' + re.split(r' \-\-(?: |$)', sql_command)[1]
+                0] + ' -- ' + re.split(r' \-\-(?: |$)', sql_command)[1]
         if ':' in host:
             port = host.split(':')[1]
             host = host.split(':')[0]
-        host += '.eqiad.wmnet'
+        if '--codfw' in sys.argv:
+            dc = 'codfw'
+        else:
+            dc = 'eqiad'
+        host += '.{}.wmnet'.format(dc)
     debug('Checking table ', table_name)
     if port:
         sql_command += ' -P ' + port
@@ -301,8 +313,9 @@ def get_table_indexes_sql(host, sql_command, table_name):
     return res.stdout.decode('utf-8').split('\n')
 
 
-def compare_table_with_prod_abstract(shard, host, expected_table_structure, table_sql, table_indexes):
+def compare_table_with_prod_abstract(shard, host, expected_table_structure, table_sql, table_indexes, wiki):
     fields_in_prod = []
+    table_name = expected_table_structure['name']
     return_result = {'fields': {}}
     for line in table_sql:
         if line.startswith('ERROR'):
@@ -319,7 +332,7 @@ def compare_table_with_prod_abstract(shard, host, expected_table_structure, tabl
                 break
         else:
             add_to_drifts(shard, host, table_name, name,
-                          'field-mismatch-prod-extra')
+                          'field-mismatch-prod-extra', wiki)
             continue
         return_result['fields'][field_structure[0]] = field_structure[1]
         if '--important-only' in sys.argv:
@@ -339,28 +352,28 @@ def compare_table_with_prod_abstract(shard, host, expected_table_structure, tabl
 
             if actual_size and expected_size and actual_size != expected_size:
                 add_to_drifts(shard, host, table_name, name, 'field-size-mismatch',
-                              expected_size + ' ' + actual_size)
+                              wiki)
             if (field_structure[1] + expected_type).count(' unsigned') == 1:
                 add_to_drifts(shard, host, table_name, name, 'field-unsigned-mismatch',
-                              field_structure[1] + ' ' + expected_type)
+                              wiki)
             actual_type = field_structure[1].split('(')[0].split(' ')[0]
             expected_type = expected_type.split('(')[0].split(' ')[0]
             if actual_type != expected_type:
                 add_to_drifts(shard, host, table_name, name, 'field-type-mismatch',
-                              expected_type + ' ' + actual_type)
+                              wiki)
         expected_config = expected_table_structure['structure'][name]['config']
         if (field_structure[2] == 'no' and 'not null' not in expected_config) or (field_structure[2] == 'yes' and 'not null' in expected_config):
-            add_to_drifts(shard, host, table_name, name, 'field-null-mismatch')
+            add_to_drifts(shard, host, table_name, name, 'field-null-mismatch', wiki)
         # Until here
 
     for column in expected_table_structure['columns']:
         if column['name'] not in fields_in_prod:
             add_to_drifts(shard, host, table_name,
-                          column['name'], 'field-mismatch-codebase-extra')
+                          column['name'], 'field-mismatch-codebase-extra', wiki)
 
     return_result['indexes'] = {}
     indexes = {}
-    for line in table_iexpected_indexesexes:
+    for line in table_indexes:
         if line.startswith('ERROR'):
             return return_result
         if not line or line.startswith('Table'):
@@ -385,25 +398,25 @@ def compare_table_with_prod_abstract(shard, host, expected_table_structure, tabl
                 break
         else:
             add_to_drifts(shard, host, table_name, index,
-                          'index-mismatch-prod-extra')
+                          'index-mismatch-prod-extra', wiki)
             continue
         if indexes[index]['unique'] != expected_index['unique']:
             add_to_drifts(shard, host, table_name, index,
-                          'index-uniqueness-mismatch')
+                          'index-uniqueness-mismatch', wiki)
         expected_columns = expected_index['columns']
         if indexes[index]['columns'] != expected_columns:
             add_to_drifts(shard, host, table_name, index,
-                          'index-columns-mismatch')
+                          'index-columns-mismatch', wiki)
 
     for index in expected_indexes:
         if index['name'] not in indexes:
             add_to_drifts(shard, host, table_name,
-                          index['name'], 'index-mismatch-code-extra')
+                          index['name'], 'index-mismatch-code-extra', wiki)
 
     return return_result
 
 
-def dispatching_compare_table_with_prod(shard, host, table, sql_command):
+def dispatching_compare_table_with_prod(shard, host, table, sql_command, wiki):
     table_sql = get_table_structure_sql(host, sql_command, table['name'])
     table_indexes = get_table_indexes_sql(host, sql_command, table['name'])
     if not table_sql or not table_indexes:
@@ -411,16 +424,13 @@ def dispatching_compare_table_with_prod(shard, host, table, sql_command):
         return {}
     if '--abstract' in sys.argv:
         return compare_table_with_prod_abstract(
-            shard, host, table, table_sql, table_indexes)
+            shard, host, table, table_sql, table_indexes, wiki)
     return compare_table_with_prod(
-        shard, host, table['name'], table, table_sql, table_indexes)
+        shard, host, table['name'], table, table_sql, table_indexes, wiki)
 
-
-def handle_shard(shard, sql_data, hosts):
-    final_result = {}
-    sql_command = sys.argv[2]
+def handle_wiki(shard, sql_data, hosts, wiki, final_result, sql_command):
     if shard != None:
-        sql_command = sql_command.format(wiki=get_a_wiki_from_shard(shard))
+        sql_command = sql_command.format(wiki=wiki)
         debug('Sql command for this shard', sql_command)
     for host in hosts:
         final_result[host] = {}
@@ -429,7 +439,7 @@ def handle_shard(shard, sql_data, hosts):
                 continue
             print(host, table['name'])
             final_result[host][table['name']] = dispatching_compare_table_with_prod(
-                shard, host, table, sql_command)
+                shard, host, table, sql_command, wiki)
             time.sleep(1)
 
     for host in hosts:
@@ -437,6 +447,17 @@ def handle_shard(shard, sql_data, hosts):
             if final_result[host][table] != final_result[hosts[0]][table]:
                 dd(final_result[host][table],
                    final_result[hosts[0]][table], table + ':' + host)
+    return final_result
+
+def handle_shard(shard, sql_data, hosts, all_=False):
+    final_result = {}
+    sql_command = sys.argv[2]
+    if shard != None:
+        wikis = get_a_wiki_from_shard(shard, all_)
+    else:
+        wikis = ['']
+    for wiki in wikis:
+        final_result = handle_wiki(shard, sql_data, hosts, wiki, final_result, sql_command)
 
 
 def main():
@@ -463,10 +484,10 @@ def main():
     if '-prod' in sys.argv:
         if sys.argv[3] == 'all':
             for shard in shard_mapping:
-                handle_shard(shard, sql_data, shard_mapping[shard])
+                handle_shard(shard, sql_data, shard_mapping[shard], False)
         else:
             hosts = shard_mapping[sys.argv[3]]
-            handle_shard(sys.argv[3], sql_data, hosts)
+            handle_shard(sys.argv[3], sql_data, hosts, True)
     else:
         handle_shard(None, sql_data, ['localhost'])
 

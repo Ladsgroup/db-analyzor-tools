@@ -51,14 +51,16 @@ def parse_sql(sql):
 
             lineSplitSpace = line.split(' ')
 
-            if line.startswith('primary key'):
-                pk = line.split('(')[1].split(')')[0].replace(' ', '')
-                continue
-            elif 'primary key' in line:
-                pk = lineSplitSpace[0]
+            if 'primary key' in line:
+                if line.startswith('primary key'):
+                    pk = line.split('(')[1].split(')')[0].replace(' ', '')
+                    continue
+                else:
+                    pk = lineSplitSpace[0]
 
             line = re.sub(r' +', ' ', line).split('--')[0]
 
+            opts = {}
             if lineSplitSpace[1].startswith('enum'):
                 real_type = ' '.join(line.split(')')[0].split(' ')[1:]) + ')'
                 real_type = real_type.replace('"', '\'').replace(' ', '')
@@ -66,10 +68,13 @@ def parse_sql(sql):
                 real_type = lineSplitSpace[1]
                 if ' unsigned ' in line:
                     line = line.replace(' unsigned ', ' ')
-                    real_type += ' unsigned'
+                    opts['unsigned'] = True
 
             table_structure_real[lineSplitSpace[0]] = {
-                'type': real_type, 'config': ' '.join(lineSplitSpace[2:])}
+                'type': real_type,
+                'config': ' '.join(lineSplitSpace[2:]),
+                'options': opts,
+            }
 
         result[table_name] = {
            'structure': table_structure_real,
@@ -138,6 +143,7 @@ if __name__ == '__main__':
         for column_name in parsed[table]['structure']:
             column = {'name': column_name}
             column['type'] = get_type(parsed[table]['structure'][column_name]['type'])
+            column['options'] = parsed[table]['structure'][column_name]['options']
             columns.append(column)
         table_abstract['columns'] = columns
 

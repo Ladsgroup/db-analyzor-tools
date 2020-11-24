@@ -49,6 +49,7 @@ def parse_sql(sql):
             if line.endswith(','):
                 line = line[:-1]
 
+            line = re.sub(r' +', ' ', line)
             lineSplitSpace = line.split(' ')
 
             opts = {}
@@ -63,10 +64,11 @@ def parse_sql(sql):
 
             # KEY() in CREATE TABLE() doesn't have an index name...
             # Should probably autogenerate a name, so it can be fixed manually in the json
+            # For now, just skip that line
+            elif re.search('key +\(', line):
+                 continue
             #elif 'key(' in line:
             #    indexes[''] = line.split('(')[1].split(')')[0].replace(' ', '')
-
-            line = re.sub(r' +', ' ', line)
 
             if lineSplitSpace[1].startswith('enum'):
                 real_type = ' '.join(line.split(')')[0].split(' ')[1:]) + ')'

@@ -61,6 +61,11 @@ def parse_sql(sql):
                     if 'auto_increment' in line:
                         opts['autoincrement'] = True
 
+            # KEY() in CREATE TABLE() doesn't have an index name...
+            # Should probably autogenerate a name, so it can be fixed manually in the json
+            #elif 'key(' in line:
+            #    indexes[''] = line.split('(')[1].split(')')[0].replace(' ', '')
+
             line = re.sub(r' +', ' ', line)
 
             if lineSplitSpace[1].startswith('enum'):

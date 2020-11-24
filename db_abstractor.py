@@ -122,6 +122,8 @@ def get_type(type_):
         return {'type': 'string', 'length': None}
     if type_ == 'enum':
         return {'type': 'smallint', 'length': None}
+    if type_ == 'tinyblob':
+        return {'type': 'blob', 'length': 255}
     return {'type': type_, 'length': None}
 
 
@@ -152,7 +154,10 @@ if __name__ == '__main__':
             type = get_type(parsed[table]['structure'][column_name]['type'])
             column['type'] = type['type']
             column['options'] = parsed[table]['structure'][column_name]['options']
+            if type['length'] is not None:
+                column['options']['length'] = type['length']
             columns.append(column)
+
         table_abstract['columns'] = columns
 
         indexes = []

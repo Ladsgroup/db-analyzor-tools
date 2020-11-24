@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import base64
 import json
 import random
@@ -6,6 +8,7 @@ import subprocess
 import sys
 import time
 from collections import defaultdict
+from optparse import OptionParser
 
 import requests
 
@@ -89,18 +92,33 @@ def get_type(type_):
         return 'smallint'
     return type_
 
-sql = get_sql_from_gerrit('core')
-parsed = parse_sql(sql)
-final_result = []
-for table in parsed:
-    table_abstract = {}
-    table_abstract['name'] = table
-    columns = []
-    for column_name in parsed[table]['structure']:
-        column = {'name': column_name}
-        column['type'] = get_type(parsed[table]['structure'][column_name]['type'])
-        columns.append(column)
-    table_abstract['columns'] = columns
-    final_result.append(table_abstract)
 
-print(json.dumps(final_result, indent='\t'))
+if __name__ == '__main__':
+    parser = OptionParser()
+    parser.add_option("--sqlfile", help="sql file to process", metavar="FILE")
+
+    opts, args = parser.parse_args()
+
+    # If --sqlfile is passed, parse that, else parse MW core from gerrit (old behaviour)
+    if opts.sqlfile:
+        sqlfile = open(opts.sqlfile,'r')
+        sql = sqlfile.read()
+    else:
+        sql = get_sql_from_gerrit('core')
+
+    parsed = parse_sql(sql)
+
+    final_result = []
+
+    for table in parsed:
+        table_abstract = {}
+        table_abstract['name'] = table
+        columns = []
+        for column_name in parsed[table]['structure']:
+            column = {'name': column_name}
+            column['type'] = get_type(parsed[table]['structure'][column_name]['type'])
+            columns.append(column)
+        table_abstract['columns'] = columns
+        final_result.append(table_abstract)
+
+    print(json.dumps(final_result, indent='\t'))

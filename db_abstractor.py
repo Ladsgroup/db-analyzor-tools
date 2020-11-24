@@ -24,17 +24,22 @@ def parse_sql(sql):
         #table_chunk = re.sub(r'\n\s*\-\-.*', '', table_chunk)
         table_chunk = re.sub(r'\n\s*\n', '\n', table_chunk)
         table_name = table_chunk.split('(')[0].strip()
+
         if not table_name or '\n' in table_name:
             continue
         if '(' not in table_chunk:
             continue
         indexes = {}
-        for res in re.findall(r'create( +unique|)(?: +fulltext|) +index +(\S+?) +on +%s +\((.+?)\)\;' % table_name, table_chunk):
+
+        for res in re.findall(r'create( +unique|)(?: +fulltext|) +index +(\S+?)[ \n]+on +%s +\((.+?)\)\;' % table_name, table_chunk):
             indexes[res[1]] = {'unique': bool(res[0]), 'columns': res[2]}
+
         table_structure = re.split(
             r'create( +unique|) +index', '('.join(table_chunk.split('(')[1:]))[0]
+
         table_structure_real = {}
         pk = None
+
         for line in table_structure.split('\n'):
             line = line.strip()
             if not line or line.endswith(';'):

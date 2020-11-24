@@ -51,24 +51,31 @@ def parse_sql(sql):
 
             lineSplitSpace = line.split(' ')
 
+            opts = {}
             if 'primary key' in line:
                 if line.startswith('primary key'):
                     pk = line.split('(')[1].split(')')[0].replace(' ', '')
                     continue
                 else:
                     pk = lineSplitSpace[0]
+                    if 'auto_increment' in line:
+                        opts['autoincrement'] = True
 
             line = re.sub(r' +', ' ', line).split('--')[0]
 
-            opts = {}
             if lineSplitSpace[1].startswith('enum'):
                 real_type = ' '.join(line.split(')')[0].split(' ')[1:]) + ')'
                 real_type = real_type.replace('"', '\'').replace(' ', '')
             else:
                 real_type = lineSplitSpace[1]
-                if ' unsigned ' in line:
-                    line = line.replace(' unsigned ', ' ')
-                    opts['unsigned'] = True
+
+            if ' unsigned ' in line:
+               line = line.replace(' unsigned ', ' ')
+               opts['unsigned'] = True
+
+            if 'not null' in line:
+               line = line.replace('not null', ' ')
+               opts['notnull'] = True
 
             table_structure_real[lineSplitSpace[0]] = {
                 'type': real_type,

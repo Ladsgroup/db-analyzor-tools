@@ -107,24 +107,30 @@ def get_sql_from_gerrit(type_):
     return base64.b64decode(requests.get(url).text).decode('utf-8')
 
 def get_type(type_):
-    type_ = type_.split(' ')[0].split('(')[0]
+    split = type_.split(' ')[0]
+    length = None
+    if '(' in split:
+        length = split.split('(')[1].split(')')[0]
+
+    type_ = split.split('(')[0]
+
     if type_ == 'int':
-        return {'type': 'integer', 'length': None}
+        return {'type': 'integer', 'length': length}
     if type_ == 'varbinary':
-        return {'type': 'binary', 'length': None}
+        return {'type': 'binary', 'length': length}
     if type_ == 'bool':
-        return {'type': 'boolean', 'length': None}
+        return {'type': 'boolean', 'length': length}
     if type_ == 'timestamp':
-        return {'type': 'time', 'length': None}
+        return {'type': 'time', 'length': length}
     if type_ == 'tinyint':
-        return {'type': 'smallint', 'length': None}
+        return {'type': 'smallint', 'length': length}
     if type_ == 'varchar':
-        return {'type': 'string', 'length': None}
+        return {'type': 'string', 'length': length}
     if type_ == 'enum':
         return {'type': 'smallint', 'length': None}
     if type_ == 'tinyblob':
         return {'type': 'blob', 'length': 255}
-    return {'type': type_, 'length': None}
+    return {'type': type_, 'length': length}
 
 
 if __name__ == '__main__':

@@ -109,20 +109,20 @@ def get_sql_from_gerrit(type_):
 def get_type(type_):
     type_ = type_.split(' ')[0].split('(')[0]
     if type_ == 'int':
-        return 'integer'
+        return {'type': 'integer', 'length': None}
     if type_ == 'varbinary':
-        return 'binary'
+        return {'type': 'binary', 'length': None}
     if type_ == 'bool':
-        return 'boolean'
+        return {'type': 'boolean', 'length': None}
     if type_ == 'timestamp':
-        return 'time'
+        return {'type': 'time', 'length': None}
     if type_ == 'tinyint':
-        return 'smallint'
+        return {'type': 'smallint', 'length': None}
     if type_ == 'varchar':
-        return 'string'
+        return {'type': 'string', 'length': None}
     if type_ == 'enum':
-        return 'smallint'
-    return type_
+        return {'type': 'smallint', 'length': None}
+    return {'type': type_, 'length': None}
 
 
 if __name__ == '__main__':
@@ -149,7 +149,8 @@ if __name__ == '__main__':
         columns = []
         for column_name in parsed[table]['structure']:
             column = {'name': column_name}
-            column['type'] = get_type(parsed[table]['structure'][column_name]['type'])
+            type = get_type(parsed[table]['structure'][column_name]['type'])
+            column['type'] = type['type']
             column['options'] = parsed[table]['structure'][column_name]['options']
             columns.append(column)
         table_abstract['columns'] = columns

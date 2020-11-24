@@ -77,6 +77,15 @@ def parse_sql(sql):
                line = line.replace('not null', ' ')
                opts['notnull'] = True
 
+            if ' default' in line:
+               default = re.findall('default +(.+?)(?:\s|$)', line)[0]
+               if default.isnumeric():
+                   default = int(default)
+               elif default == 'null':
+                   default = None
+
+               opts['default'] = default
+
             table_structure_real[lineSplitSpace[0]] = {
                 'type': real_type,
                 'config': ' '.join(lineSplitSpace[2:]),

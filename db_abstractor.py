@@ -16,10 +16,12 @@ import requests
 def parse_sql(sql):
     result = {}
     sql = sql.replace('IF NOT EXISTS ', '')
+    sql = re.sub(r'\s*\-\-.*', '', sql)
+
     for table_chunk in sql.split('CREATE TABLE '):
         table_chunk = table_chunk.lower()
         table_chunk = re.sub(r'/\*.+?\*/', '', table_chunk)
-        table_chunk = re.sub(r'\n\s*\-\-.*', '', table_chunk)
+        #table_chunk = re.sub(r'\n\s*\-\-.*', '', table_chunk)
         table_chunk = re.sub(r'\n\s*\n', '\n', table_chunk)
         table_name = table_chunk.split('(')[0].strip()
         if not table_name or '\n' in table_name:

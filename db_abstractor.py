@@ -77,12 +77,12 @@ def parse_sql(sql):
                 real_type = lineSplitSpace[1]
 
             if ' unsigned ' in line:
-               line = line.replace(' unsigned ', ' ')
-               opts['unsigned'] = True
+                line = line.replace(' unsigned ', ' ')
+                opts['unsigned'] = True
 
             if 'not null' in line:
-               line = line.replace('not null', ' ')
-               opts['notnull'] = True
+                line = line.replace('not null', ' ')
+                opts['notnull'] = True
 
             if ' default' in line:
                default = re.findall('default +(.+?)(?:\s|$)', line)[0]

@@ -80,9 +80,10 @@ def parse_sql(sql):
                 line = line.replace(' unsigned ', ' ')
                 opts['unsigned'] = True
 
-            if 'not null' in line:
+            not_null = 'not null' in line
+            if not_null:
                 line = line.replace('not null', ' ')
-                opts['notnull'] = True
+            opts['notnull'] = not_null
 
             if ' default' in line:
                default = re.findall('default +(.+?)(?:\s|$)', line)[0]

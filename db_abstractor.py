@@ -132,6 +132,8 @@ if __name__ == '__main__':
         for index_name in parsed[table]['indexes']:
             index = {'name': index_name}
             index['columns'] = parsed[table]['indexes'][index_name]['columns'].split(',')
+            if (parsed[table]['indexes'][index_name]['unique']):
+                index['unique'] = True
             indexes.append(index)
 
         table_abstract['indexes'] = indexes

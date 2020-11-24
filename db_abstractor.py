@@ -132,7 +132,8 @@ def get_type(type_):
     if type_ == 'timestamp':
         return {'type': 'time', 'length': length}
     if type_ == 'tinyint':
-        return {'type': 'smallint', 'length': length}
+        # mwtinyint is a custom MW datatype
+        return {'type': 'mwtinyint', 'length': length}
     if type_ == 'varchar':
         return {'type': 'string', 'length': length}
     if type_ == 'enum':

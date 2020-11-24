@@ -120,12 +120,22 @@ if __name__ == '__main__':
     for table in parsed:
         table_abstract = {}
         table_abstract['name'] = table
+
         columns = []
         for column_name in parsed[table]['structure']:
             column = {'name': column_name}
             column['type'] = get_type(parsed[table]['structure'][column_name]['type'])
             columns.append(column)
         table_abstract['columns'] = columns
+
+        indexes = []
+        for index_name in parsed[table]['indexes']:
+            index = {'name': index_name}
+            index['columns'] = parsed[table]['indexes'][index_name]['columns'].split(',')
+            indexes.append(index)
+
+        table_abstract['indexes'] = indexes
+
         final_result.append(table_abstract)
 
     print(json.dumps(final_result, indent='\t'))

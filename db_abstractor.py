@@ -124,7 +124,9 @@ def get_type(type_):
     split = type_.split(' ')[0]
     length = None
     if '(' in split:
-        length = split.split('(')[1].split(')')[0]
+        bracketsval = split.split('(')[1].split(')')[0]
+        if bracketsval.isnumeric():
+            length = int(bracketsval)
 
     type_ = split.split('(')[0]
 

@@ -86,12 +86,13 @@ def parse_sql(sql):
 
             if ' default' in line:
                default = re.findall('default +(.+?)(?:\s|$)', line)[0]
+               if '\'' in default:
+                   default = str(default).replace('\'', '')
+
                if default.isnumeric():
                    default = int(default)
                elif default == 'null':
                    default = None
-               elif default == "''":
-                   default = ""
 
                opts['default'] = default
 

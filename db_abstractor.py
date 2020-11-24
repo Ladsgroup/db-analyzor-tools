@@ -160,15 +160,20 @@ if __name__ == '__main__':
     final_result = []
 
     for table in parsed:
-        table_abstract = {}
-        table_abstract['name'] = table
+        table_abstract = {
+            'name': table,
+            #'comment': '',
+        }
 
         columns = []
         for column_name in parsed[table]['structure']:
-            column = {'name': column_name}
             type = get_type(parsed[table]['structure'][column_name]['type'])
-            column['type'] = type['type']
-            column['options'] = parsed[table]['structure'][column_name]['options']
+            column = {
+                 'name': column_name,
+                 #'comment': '',
+                'type': type['type'],
+                'options': parsed[table]['structure'][column_name]['options'],
+            }
             if type['length'] is not None:
                 column['options']['length'] = type['length']
             columns.append(column)
@@ -177,9 +182,12 @@ if __name__ == '__main__':
 
         indexes = []
         for index_name in parsed[table]['indexes']:
-            index = {'name': index_name}
-            index['columns'] = parsed[table]['indexes'][index_name]['columns'].split(',')
-            index['unique'] = parsed[table]['indexes'][index_name]['unique']
+            index = {
+                'name': index_name,
+                #'comment': '',
+                'columns': parsed[table]['indexes'][index_name]['columns'].split(','),
+                'unique': parsed[table]['indexes'][index_name]['unique'],
+            }
             indexes.append(index)
 
         table_abstract['indexes'] = indexes

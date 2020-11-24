@@ -90,6 +90,8 @@ def parse_sql(sql):
                    default = int(default)
                elif default == 'null':
                    default = None
+               elif default == "''":
+                   default = ""
 
                opts['default'] = default
 
@@ -122,7 +124,7 @@ def get_sql_from_gerrit(type_):
     url = gerrit_url + '{0}?format=TEXT'.format(type_to_path_mapping[type_])
     return base64.b64decode(requests.get(url).text).decode('utf-8')
 
-def get_type(type_):
+def get_type(type_, name):
     split = type_.split(' ')[0]
     length = None
     if '(' in split:
@@ -131,6 +133,9 @@ def get_type(type_):
             length = int(bracketsval)
 
     type_ = split.split('(')[0]
+
+    if 'timestamp' in name:
+        return {'type':'mwtimestamp', 'length':14}
 
     if type_ == 'int':
         return {'type': 'integer', 'length': length}
@@ -149,6 +154,10 @@ def get_type(type_):
         return {'type': 'smallint', 'length': None}
     if type_ == 'tinyblob':
         return {'type': 'blob', 'length': 255}
+    if type_ == 'mediumblob':
+        return {'type': 'blob', 'length': 16777215}
+    if type_ == 'char':
+        return {'type': 'varchar', 'length': length}
     return {'type': type_, 'length': length}
 
 
@@ -177,7 +186,7 @@ if __name__ == '__main__':
 
         columns = []
         for column_name in parsed[table]['structure']:
-            type = get_type(parsed[table]['structure'][column_name]['type'])
+            type = get_type(parsed[table]['structure'][column_name]['type'], column_name)
             column = {
                  'name': column_name,
                  #'comment': '',
@@ -195,7 +204,7 @@ if __name__ == '__main__':
             index = {
                 'name': index_name,
                 #'comment': '',
-                'columns': parsed[table]['indexes'][index_name]['columns'].split(','),
+                'columns': parsed[table]['indexes'][index_name]['columns'].replace(' ', '').split(','),
                 'unique': parsed[table]['indexes'][index_name]['unique'],
             }
             indexes.append(index)

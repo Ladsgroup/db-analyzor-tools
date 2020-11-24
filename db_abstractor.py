@@ -38,19 +38,25 @@ def parse_sql(sql):
             r'create( +unique|) +index', '('.join(table_chunk.split('(')[1:]))[0]
 
         table_structure_real = {}
-        pk = None
 
+        pk = None
         for line in table_structure.split('\n'):
             line = line.strip()
             if not line or line.endswith(';'):
                 continue
+
             # Why strip(',') doesn't work?
             if line.endswith(','):
                 line = line[:-1]
+
             if line.startswith('primary key'):
                 pk = line.split('(')[1].split(')')[0].replace(' ', '')
                 continue
+            elif 'primary key' in line:
+                pk = line.split(' ')[0]
+
             line = re.sub(r' +', ' ', line).split('--')[0]
+
             if line.split(' ')[1].startswith('enum'):
                 real_type = ' '.join(line.split(')')[0].split(' ')[1:]) + ')'
                 real_type = real_type.replace('"', '\'').replace(' ', '')
@@ -59,11 +65,16 @@ def parse_sql(sql):
                 if ' unsigned ' in line:
                     line = line.replace(' unsigned ', ' ')
                     real_type += ' unsigned'
+
             table_structure_real[line.split(' ')[0]] = {
                 'type': real_type, 'config': ' '.join(line.split(' ')[2:])}
 
-            result[table_name] = {
-                'structure': table_structure_real, 'indexes': indexes}
+        result[table_name] = {
+           'structure': table_structure_real,
+           'indexes': indexes
+        }
+        if pk is not None:
+            result[table_name]['pk'] = pk
 
     return result
 
@@ -137,6 +148,9 @@ if __name__ == '__main__':
             indexes.append(index)
 
         table_abstract['indexes'] = indexes
+
+        if parsed[table]['pk']:
+            table_abstract['pk'] = [ parsed[table]['pk'] ]
 
         final_result.append(table_abstract)
 

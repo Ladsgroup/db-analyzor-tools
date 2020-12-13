@@ -213,7 +213,7 @@ if __name__ == '__main__':
 
         table_abstract['indexes'] = indexes
 
-        if parsed[table]['pk']:
+        if parsed[table].get('pk'):
             table_abstract['pk'] = [ parsed[table]['pk'] ]
 
         final_result.append(table_abstract)

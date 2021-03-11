@@ -422,10 +422,10 @@ def compare_table_with_prod_abstract(
             expected_type = 'tinyint'
         elif expected_type == 'mwenum':
             expected_type = 'enum'
-            expected_size = [
+            expected_size = set([
                 i.lower() for i in expected_column['options'].get(
                     'CustomSchemaOptions', {}).get(
-                    'enum_values', [])]
+                    'enum_values', [])])
         elif expected_type == 'mwtimestamp':
             if expected_column['options'].get(
                     'CustomSchemaOptions', {}).get(
@@ -445,11 +445,11 @@ def compare_table_with_prod_abstract(
             if '(' in field_structure[1]:
                 actual_size = field_structure[1].split('(')[1].split(')')[0]
                 if ',' in actual_size:
-                    actual_size = actual_size.replace(
-                        '\'', '').replace('"', '').split(',')
+                    actual_size = set(actual_size.replace(
+                        '\'', '').replace('"', '').split(','))
 
             if actual_size and expected_size:
-                if not isinstance(expected_size, list):
+                if not isinstance(expected_size, set):
                     the_same = int(actual_size) == int(expected_size)
                 else:
                     the_same = actual_size == expected_size

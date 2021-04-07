@@ -317,7 +317,8 @@ def get_table_structure_sql(host, sql_command, table_name):
     if port:
         sql_command += ' -P ' + port
     command = 'timeout 6 ' + sql_command + \
-        ' -h %s -e "DESC %s;"' % (host, table_name)
+        ' -h %s -e "DESC %s; SHOW INDEX FROM %s;"' % (
+            host, table_name, table_name)
     debug('Running:', command)
     try:
         res = run(
@@ -341,36 +342,11 @@ def get_table_structure_sql(host, sql_command, table_name):
             return {}
     if res.stderr and res.stderr.decode('utf-8'):
         return {}
-    return res.stdout.decode('utf-8').split('\n')
-
-
-def get_table_indexes_sql(host, sql_command, table_name):
-    command = 'timeout 6 ' + sql_command + \
-        ' -h %s -e "SHOW INDEX FROM %s;"' % (host, table_name)
-    debug('Running:', command)
-    try:
-        res = run(
-            command,
-            stdin=PIPE,
-            stdout=PIPE,
-            shell=True,
-            stderr=PIPE,
-            timeout=5)
-    except TimeoutExpired:
-        debug('First timeout has reached')
-        try:
-            res = run(
-                command,
-                stdin=PIPE,
-                stdout=PIPE,
-                shell=True,
-                stderr=PIPE,
-                timeout=5)
-        except TimeoutExpired:
-            return {}
-    if res.stderr and res.stderr.decode('utf-8'):
-        return {}
-    return res.stdout.decode('utf-8').split('\n')
+    result = res.stdout.decode('utf-8').split('\nTable\t')
+    if len(result) != 2:
+        print(result)
+        raise Exception
+    return (result[0].split('\n'), result[1].split('\n'))
 
 
 def compare_table_with_prod_abstract(
@@ -540,8 +516,9 @@ def compare_table_with_prod_abstract(
 
 
 def dispatching_compare_table_with_prod(shard, host, table, sql_command, wiki):
-    table_sql = get_table_structure_sql(host, sql_command, table['name'])
-    table_indexes = get_table_indexes_sql(host, sql_command, table['name'])
+    table_structure = get_table_structure_sql(host, sql_command, table['name'])
+    table_sql = table_structure[0]
+    table_indexes = table_structure[1]
     if not table_sql or not table_indexes:
         print('no response')
         return {}

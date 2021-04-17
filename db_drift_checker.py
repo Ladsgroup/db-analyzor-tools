@@ -346,7 +346,7 @@ def get_table_structure_sql(host, sql_command, table_name):
     if len(result) != 2:
         print(result)
         raise Exception
-    return (result[0].split('\n'), result[1].split('\n'))
+    return (result[0].split('\n'), result[1].split('\n')[1:])
 
 
 def compare_table_with_prod_abstract(
@@ -517,6 +517,9 @@ def compare_table_with_prod_abstract(
 
 def dispatching_compare_table_with_prod(shard, host, table, sql_command, wiki):
     table_structure = get_table_structure_sql(host, sql_command, table['name'])
+    if not table_structure:
+        print('no response')
+        return {}
     table_sql = table_structure[0]
     table_indexes = table_structure[1]
     if not table_sql or not table_indexes:
@@ -601,3 +604,4 @@ def main():
 
 
 main()
+

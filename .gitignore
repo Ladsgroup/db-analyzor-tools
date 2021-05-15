@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+tracking_records.json
+.idea/
+*.iml
+
 # C extensions
 *.so
 

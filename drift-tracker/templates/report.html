@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    summary {
+        cursor: pointer;
+    }
+    .untracked {
+        border: 1px #d33 solid;
+        background-color: #fee7e6;
+        margin: 5px;
+        padding: 5px;
+    }
+    .tracked {
+        border: 1px #a2a9b1 solid;
+        background-color: #eaecf0;
+        margin: 5px;
+        padding: 5px;
+    }
+    .table {
+        background-color: #f8f9fa;
+        margin: 5px;
+    }
+</style>
+<div class="content">
+    <b><a href='?untrackedOnly=1'>See only not-tracked drifts</a></b><br>
+    <b>Total number of drift groups:</b> {{ len_report }}
+    {% for i in report %}
+    <div class="drift {% if i.tracked %}tracked{% else %}untracked{% endif %}">
+        <h2>{{i.name}}</h2>
+        <b>Sections having this drift:</b> {{i.section_count}} ({{i.sections}})<br>
+        {% if i.tracked %}
+        <b>Tracked in <a href="https://phabricator.wikimedia.org/{{i.tracked}}">{{i.tracked}}</a></b>
+        {% else %}
+        <b>Not tracked</b> (<a href="/set-tracking/?name={{i.code}}">Set tracking</a> or <a href="https://phabricator.wikimedia.org/maniphest/task/edit/form/1/">create ticket</a>)
+        {% endif %}
+        <details>
+            <summary class="btn btn-light">See the list of drifts</summary>
+            <table class="table">
+                <thead>
+                <tr><th>section</th>
+                    <th>host</th>
+                    <th>db</th>
+                </tr></thead>
+                <tbody>
+                {% for drift in i.table %}
+                    <tr><td>{{drift[0]}}</td><td>{{drift[1]}}</td><td>{{drift[2]}}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </details>
+    </div>
+    {% endfor %}
+{% endblock %}

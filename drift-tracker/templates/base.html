@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet"
+          href="https://tools-static.wmflabs.org/cdnjs/ajax/libs/twitter-bootstrap/4.4.0/css/bootstrap.min.css">
+    <title>Drift tracker</title>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-light bg-light">
+    <div class="container">
+        <ul class="navbar-nav mr-auto">
+            <li class="nav-item">
+                <a class="navbar-brand" href="/">Drift tracker</a>
+            </li>
+        </ul>
+    </div>
+</nav>
+
+
+<div class="container mt-3">
+    {% block content %}{% endblock %}
+
+    <hr/>
+    <a href="/">Drift tracker</a>
+    &middot;
+    <a href="https://wikitech.wikimedia.org" class="text-muted">
+        wikitech.wikimedia.org</a>
+    &middot;
+    <a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ" class="text-muted">
+        report issues</a>
+    &middot;
+    <a href="https://github.com/Ladsgroup/db-analyzor-tools" class="text-muted">
+        source code</a>
+</div>
+</body>
+</html>

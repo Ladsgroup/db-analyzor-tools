@@ -1,0 +1,17 @@
+{
+    "core": [
+        "mediawiki/core/+/master/maintenance/tables.json"
+    ],
+    "wikibase_client": [
+        "mediawiki/extensions/Wikibase/+/master/client/sql/abstract/entity_usage.json"
+    ],
+    "wikibase_repo": [
+        "mediawiki/extensions/Wikibase/+/master/repo/sql/abstract/term_store.json",
+        "mediawiki/extensions/Wikibase/+/master/repo/sql/abstract/wb_changes.json",
+        "mediawiki/extensions/Wikibase/+/master/repo/sql/abstract/wb_changes_dispatch.json",
+        "mediawiki/extensions/Wikibase/+/master/repo/sql/abstract/wb_changes_subscription.json",
+        "mediawiki/extensions/Wikibase/+/master/repo/sql/abstract/wb_id_counters.json",
+        "mediawiki/extensions/Wikibase/+/master/repo/sql/abstract/wb_items_per_site.json",
+        "mediawiki/extensions/Wikibase/+/master/repo/sql/abstract/wb_property_info.json"
+    ]
+}

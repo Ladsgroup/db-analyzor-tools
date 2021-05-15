@@ -1,6 +1,6 @@
 from drift_tracker.tracking import set_tracking_internal
 from drift_tracker.report import get_report
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect
 
 app = Flask(__name__)
 
@@ -14,7 +14,7 @@ valid_categories = [
 @app.route("/report/")
 @app.route("/report")
 def hello():
-    return report('core')
+    return redirect("/report/core")
 
 
 @app.route("/report/<category>")
@@ -22,8 +22,14 @@ def hello():
 def report(category):
     if category not in valid_categories:
         return render_template('page_not_found.html'), 404
-    res = get_report(category)
-    return render_template('report.html', report=res, len_report=len(res))
+    res = get_report(category, request.args.get('untrackedOnly', False))
+    stats = {
+        'total': len(res),
+        'widespread': len([i for i in res if i['section_count'] > 5]),
+        'untracked': len([i for i in res if not i['tracked']]),
+        'untracked_widespread': len([i for i in res if i['section_count'] > 5 and not i['tracked']]),
+    }
+    return render_template('report.html', report=res, stats=stats)
 
 
 @app.route("/set-tracking", methods=['POST'])

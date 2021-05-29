@@ -20,8 +20,10 @@ def get_report(category, untracked_only=False):
     data = requests.get(
         'https://people.wikimedia.org/~ladsgroup/by_drift_type_drifts_core.json').json()
     tracked = get_tracking_internal()
-    data = OrderedDict(
-        sorted(data.items(), key=lambda t: len(t[1]), reverse=True))
+    data = OrderedDict(sorted(
+        [i for i in data.items() if i[0][0] != '_'],
+        key=lambda t: len(t[1]),
+        reverse=True))
     report = []
     for drift_name in data:
         if drift_name in tracked and untracked_only:

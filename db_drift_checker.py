@@ -1,28 +1,20 @@
 #!/usr/bin/python3
 
-import base64
 import json
-import random
-import re
 import sys
 import time
-from collections import defaultdict
-from subprocess import PIPE, TimeoutExpired, run
 
-import requests
+from checker import Checker
+from data_access.sql import get_table_structure_sql
+from data_access.wmf import get_a_wiki_from_shard, get_shard_mapping, Gerrit
+from domain.table import Column
+from domain.db import Db
 
 # Proudction:
 # python3 db_drift_checker.py core "sql {wiki} -- " -prod
 # localhost:
 # python3 db_drift_checker.py core "sudo mysql -Drepo "
 
-
-def debug(*args):
-    if '-v' in sys.argv or '--verbose' in sys.argv:
-        print(*args)
-
-
-gerrit_url = 'https://gerrit.wikimedia.org/g/'
 categories = [
     'core',
     'wikibase_client'
@@ -30,171 +22,8 @@ categories = [
 with open('abstract_paths.json', 'r') as f:
     type_to_path_mapping_abstracts = json.loads(f.read())
 
-by_db_drifts = {}
-by_drift_type_drifts = defaultdict(dict)
 
-
-class Db():
-    def __init__(self, section, host, wiki):
-        self.section = section
-        self.host = host
-        self.wiki = wiki
-
-
-def get_a_wiki_from_shard(shard, all_=False):
-    debug('Getting a wiki from shard:', shard)
-    url = gerrit_url + \
-        'operations/mediawiki-config/+/master/dblists/{shard}.dblist?format=TEXT'.format(
-            shard=shard)
-    dbs = base64.b64decode(requests.get(url).text).decode('utf-8').split('\n')
-    random.shuffle(dbs)
-    dbs_returning = []
-    for line in dbs:
-        if not line or line.startswith('#'):
-            continue
-        debug('Got this wiki:', line.strip())
-        dbs_returning.append(line.strip())
-        if not all_:
-            return [line.strip()]
-    return dbs_returning
-
-
-def add_to_drifts(db: Db, table, second, drift_type):
-    drift = ' '.join([table, second, drift_type])
-    category = sys.argv[1].lower()
-    shard = db.section
-    if shard not in by_db_drifts:
-        by_db_drifts[shard] = defaultdict(list)
-    by_db_drifts[shard]['%s:%s' % (db.host, db.wiki)].append(drift)
-
-    if shard not in by_drift_type_drifts[drift]:
-        by_drift_type_drifts[drift][shard] = []
-    by_drift_type_drifts[drift][shard].append('%s:%s' % (db.host, db.wiki))
-
-    with open('by_db_drifts_{}.json'.format(category), 'w') as f:
-        f.write(json.dumps(by_db_drifts, indent=4, sort_keys=True))
-    with open('by_drift_type_drifts_{}.json'.format(category), 'w') as f:
-        f.write(json.dumps(by_drift_type_drifts, indent=4, sort_keys=True))
-
-
-def get_file_from_gerrit(url):
-    url = gerrit_url + '{0}?format=TEXT'.format(url)
-    return base64.b64decode(requests.get(url).text).decode('utf-8')
-
-
-def get_shard_mapping():
-    shard_mapping = {}
-    if '--codfw' in sys.argv:
-        dc = 'codfw'
-    else:
-        dc = 'eqiad'
-    db_data = requests.get(
-        'https://noc.wikimedia.org/dbconfig/{}.json'.format(dc)).json()
-    for shard in db_data['sectionLoads']:
-        cases = []
-        if shard == 'DEFAULT':
-            name = 's3'
-        else:
-            name = shard
-        for type_ in db_data['sectionLoads'][shard]:
-            cases += list(type_.keys())
-        shard_mapping[name] = cases
-    return shard_mapping
-
-
-def get_table_structure_sql(host, sql_command, table_name):
-    port = None
-    if host != 'localhost':
-        if re.search(r' \-\-(?: |$)', sql_command):
-            sql_command = re.split(r' \-\-(?: |$)', sql_command)[
-                0] + ' -- ' + re.split(r' \-\-(?: |$)', sql_command)[1]
-        if ':' in host:
-            port = host.split(':')[1]
-            host = host.split(':')[0]
-        if '--codfw' in sys.argv:
-            dc = 'codfw'
-        else:
-            dc = 'eqiad'
-        host += '.{}.wmnet'.format(dc)
-    debug('Checking table ', table_name)
-    if port:
-        sql_command += ' -P ' + port
-    command = 'timeout 6 ' + sql_command + \
-        ' -h %s -e "DESC %s; SHOW INDEX FROM %s;"' % (
-            host, table_name, table_name)
-    debug('Running:', command)
-    try:
-        res = run(
-            command,
-            stdin=PIPE,
-            stdout=PIPE,
-            shell=True,
-            stderr=PIPE,
-            timeout=5)
-    except TimeoutExpired:
-        debug('First timeout has reached')
-        try:
-            res = run(
-                command,
-                stdin=PIPE,
-                stdout=PIPE,
-                shell=True,
-                stderr=PIPE,
-                timeout=5)
-        except BaseException:
-            return {}
-    if res.stderr and res.stderr.decode('utf-8'):
-        return {}
-    result = res.stdout.decode('utf-8').split('\nTable\t')
-    if len(result) != 2:
-        print(result)
-        raise Exception
-    return (result[0].split('\n'), result[1].split('\n')[1:])
-
-
-def build_expected(expected_column):
-    expected = {}
-    expected['type'] = expected_column['type'].replace(
-        'string', 'binary').replace('integer', 'int')
-    expected['size'] = expected_column['options'].get('length', 0)
-
-    if expected['type'] == 'binary' and not expected_column['options'].get(
-            'fixed'):
-        expected['type'] = 'varbinary'
-    elif expected['type'] in ('blob', 'text'):
-        if expected['size'] < 256:
-            expected['type'] = 'tinyblob'
-        elif expected['size'] < 65536:
-            expected['type'] = 'blob'
-        elif expected['size'] < 16777216:
-            expected['type'] = 'mediumblob'
-    elif expected['type'] == 'mwtinyint':
-        expected['type'] = 'tinyint'
-    elif expected['type'] == 'mwenum':
-        expected['type'] = 'enum'
-        expected['size'] = set([
-            i.lower() for i in expected_column['options'].get(
-                'CustomSchemaOptions', {}).get(
-                'enum_values', [])])
-    elif expected['type'] == 'mwtimestamp':
-        if expected_column['options'].get(
-                'CustomSchemaOptions', {}).get(
-                'allowInfinite', False):
-            expected['type'] = 'varbinary'
-        else:
-            expected['type'] = 'binary'
-        expected['size'] = 14
-    elif expected['type'] in ('datetimetz'):
-        expected['type'] = 'timestamp'
-    expected['not_null'] = expected_column['options'].get('notnull', False)
-    expected['unsigned'] = expected_column['options'].get('unsigned', False)
-    expected['auto_increment'] = expected_column['options'].get(
-        'autoincrement', False)
-
-    return expected
-
-
-def handle_column(expected, field_structure, db, table_name, name):
+def handle_column(expected: Column, field_structure, checker: Checker):
     actual_size = None
     if '(' in field_structure[1]:
         actual_size = field_structure[1].split('(')[1].split(')')[0]
@@ -202,25 +31,25 @@ def handle_column(expected, field_structure, db, table_name, name):
             actual_size = set(actual_size.replace(
                 '\'', '').replace('"', '').split(','))
 
-    if actual_size and expected['size']:
-        if not isinstance(expected['size'], set):
-            the_same = int(actual_size) == int(expected['size'])
+    if actual_size and expected.size_:
+        if not isinstance(expected.size_, set):
+            the_same = int(actual_size) == int(expected.size_)
         else:
-            the_same = actual_size == expected['size']
-        if not the_same:
-            add_to_drifts(db, table_name, name, 'field-size-mismatch')
-    if (expected['unsigned'] and ' unsigned' not in field_structure[1]) or (
-            expected['unsigned'] is False and ' unsigned' in field_structure[1]):
-        add_to_drifts(db, table_name, name, 'field-unsigned-mismatch')
+            the_same = actual_size == expected.size_
+        checker.run_check('field-size-mismatch', not the_same)
+    unsigned_mismatch = \
+        (expected.unsigned and ' unsigned' not in field_structure[1]) or \
+        (expected.unsigned is False and ' unsigned' in field_structure[1])
+    checker.run_check('field-unsigned-mismatch', unsigned_mismatch)
     actual_type = field_structure[1].split('(')[0].split(' ')[0]
     actual_type = actual_type.replace(
         'double precision', 'float').replace(
         'double', 'float')
-    if actual_type != expected['type']:
-        add_to_drifts(db, table_name, name, 'field-type-mismatch')
-    if (field_structure[2] == 'no' and expected['not_null'] is not True) or (
-            field_structure[2] == 'yes' and expected['not_null'] is not False):
-        add_to_drifts(db, table_name, name, 'field-nullable-mismatch')
+    checker.run_check('field-type-mismatch', actual_type != expected.type_)
+    nullable_mismatch = \
+        (field_structure[2] == 'no' and expected.not_null is not True) or \
+        (field_structure[2] == 'yes' and expected.not_null is not False)
+    checker.run_check('field-nullable-mismatch', nullable_mismatch)
 
 
 def compare_table_with_prod(db, expected_table, sql_command):
@@ -250,24 +79,19 @@ def compare_table_with_prod(db, expected_table, sql_command):
                 expected_column = column
                 break
         else:
-            add_to_drifts(db, table_name, name, 'field-mismatch-prod-extra')
+            checker = Checker(db, table_name, name)
+            checker.run_check('field-mismatch-prod-extra', True)
             continue
 
-        expected = build_expected(expected_column)
-        handle_column(
-            expected,
-            field_structure,
-            db,
-            table_name,
-            column['name'])
+        expected = Column.newFromAbstractSchema(expected_column)
+        checker = Checker(db, table_name, column['name'])
+        handle_column(expected, field_structure, checker)
 
     for column in expected_table['columns']:
-        if column['name'] not in fields_in_prod:
-            add_to_drifts(
-                db,
-                table_name,
-                column['name'],
-                'field-mismatch-codebase-extra')
+        checker = Checker(db, table_name, column['name'])
+        checker.run_check(
+            'field-mismatch-codebase-extra',
+            column['name'] not in fields_in_prod)
 
     indexes = {}
     for line in table_indexes:
@@ -287,9 +111,12 @@ def compare_table_with_prod(db, expected_table, sql_command):
     expected_indexes = expected_table['indexes']
     expected_pk = expected_table.get('pk')
     for index in indexes:
+        checker = Checker(db, table_name, index)
         if index == 'primary':
-            if indexes[index]['columns'] != expected_pk:
-                add_to_drifts(db, table_name, index, 'primary-key-mismatch')
+            checker.run_check(
+                'primary-key-mismatch',
+                indexes[index]['columns'] != expected_pk
+            )
             continue
         expected_index = None
         for i in expected_indexes:
@@ -297,27 +124,28 @@ def compare_table_with_prod(db, expected_table, sql_command):
                 expected_index = i
                 break
         else:
-            add_to_drifts(db, table_name, index, 'index-mismatch-prod-extra')
+            checker.run_check('index-mismatch-prod-extra', True)
             continue
-        if indexes[index]['unique'] != expected_index['unique']:
-            add_to_drifts(db, table_name, index, 'index-uniqueness-mismatch')
+        checker.run_check(
+            'index-uniqueness-mismatch',
+            indexes[index]['unique'] != expected_index['unique']
+        )
         expected_columns = expected_index['columns']
-        if indexes[index]['columns'] != expected_columns:
-            add_to_drifts(db, table_name, index, 'index-columns-mismatch')
+        checker.run_check(
+            'index-columns-mismatch',
+            indexes[index]['columns'] != expected_columns
+        )
 
     for index in expected_indexes:
-        if index['name'] not in indexes:
-            add_to_drifts(
-                db,
-                table_name,
-                index['name'],
-                'index-mismatch-code-extra')
+        checker = Checker(db, table_name, index['name'])
+        checker.run_check(
+            'index-mismatch-code-extra',
+            index['name'] not in indexes)
 
 
 def handle_wiki(shard, sql_data, hosts, wiki, sql_command):
     if shard is not None:
         sql_command = sql_command.format(wiki=wiki)
-        debug('Sql command for this shard', sql_command)
     for host in hosts:
         for table in sql_data:
             if table['name'] == 'searchindex':
@@ -339,15 +167,19 @@ def handle_shard(shard, sql_data, hosts, all_=False):
 
 
 def handle_category(category):
-    with open('by_db_drifts_{}.json'.format(category), 'w') as f:
-        f.write(json.dumps({}))
-    with open('by_drift_type_drifts_{}.json'.format(category), 'w') as f:
-        f.write(json.dumps({}))
+    with open('drifts_{}.json'.format(category), 'w') as f:
+        f.write(json.dumps({
+        '_metadata': {
+            'time_start': time.time()
+        }
+    }))
     shard_mapping = get_shard_mapping()
+
     if category in type_to_path_mapping_abstracts:
         sql_data = []
+        gerrit = Gerrit()
         for path in type_to_path_mapping_abstracts[category]:
-            sql_data += json.loads(get_file_from_gerrit(path))
+            sql_data += json.loads(gerrit.get_file(path))
     else:
         raise Exception
     if '-prod' in sys.argv:
@@ -355,6 +187,12 @@ def handle_category(category):
             handle_shard(shard, sql_data, shard_mapping[shard], False)
     else:
         handle_shard(None, sql_data, ['localhost'])
+
+    with open('drifts_{}.json'.format(category), 'r') as f:
+        drifts = json.loads(f.read())
+    drifts['_metadata']['time_end'] = time.time()
+    with open('drifts_{}.json'.format(category), 'w') as f:
+        f.write(json.dumps(drifts, indent=4, sort_keys=True))
 
 
 def main():

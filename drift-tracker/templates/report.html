@@ -24,7 +24,10 @@
 <div class="content">
     <b><a href='?untrackedOnly=1'>See only not-tracked drifts</a></b><br>
     <b>Number of widespread drift groups (more than 5 sections):</b> {{ stats.widespread }} ({{ stats.untracked_widespread }} not tracked)<br>
-    <b>Total number of drift groups:</b> {{ stats.total }} ({{ stats.untracked }} not tracked)
+    <b>Total number of drift groups:</b> {{ stats.total }} ({{ stats.untracked }} not tracked)<br>
+    {% if start_time %}<b>Start time of building the report:</b> {{ start_time }}<br>{% endif %}
+    {% if end_time %}<b>End time of building the report:</b> {{ end_time }}<br>{% endif %}
+    {% if duration %}<b>Time to build the report:</b> {{ duration }} hours<br>{% endif %}
     {% for i in report %}
     <div class="drift {% if i.tracked %}tracked{% else %}untracked{% endif %}">
         <h2>{{i.name}}</h2>

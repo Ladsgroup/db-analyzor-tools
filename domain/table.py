@@ -22,6 +22,8 @@ class Column():
                 type_ = 'blob'
             elif size_ < 16777216:
                 type_ = 'mediumblob'
+            elif size_ < 4294967296:
+                type_ = 'longblob'
         elif type_ == 'mwtinyint':
             type_ = 'tinyint'
         elif type_ == 'mwenum':

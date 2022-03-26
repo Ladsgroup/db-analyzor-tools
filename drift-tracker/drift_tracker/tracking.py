@@ -1,31 +1,12 @@
 import json
-import re
+import requests
 
 
 def get_tracking_internal():
     try:
-        with open('tracking_records.json', 'r') as f:
-            return json.loads(f.read())
+        text = requests.get(
+            'https://wikitech.wikimedia.org/w/index.php?title=User:Ladsgroup/drifts.json&action=raw').text
+        return json.loads(text)
+
     except BaseException:
-        with open('tracking_records.json', 'w') as f:
-            f.write(json.dumps({}))
         return {}
-
-
-def set_tracking_internal(name, tracking):
-    tracking = tracking.strip()
-    if not name or not tracking:
-        return {
-            'error': 'Field is undefined'
-        }
-    if not re.search(r'^T\d+$', tracking):
-        return {
-            'error': 'Tracking id is not understandable'
-        }
-    tracking_values = get_tracking_internal()
-    tracking_values[name] = tracking
-    with open('tracking_records.json', 'w') as f:
-        f.write(json.dumps(tracking_values))
-    return {
-        'success': 'Done!'
-    }

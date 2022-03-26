@@ -1,13 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<form action="/set-tracking/" method="post">
-    <label for="name">Name</label><br>
-    <div class="ui corner labeled input">
-        <input class="form-control" type="text" name="name" id="name" required value="{{name}}"></div><br>
-    <label for="name">Phabricator ticket id</label><br>
-    <div class="ui corner labeled input">
-        <input class="form-control" type="text" name="tracking" id="tracking" required value="{{tracking}}"></div>
-    <br>
-    <button type="submit" class="btn btn-primary">Set tracking</button>
-</form>
+Tracking is now set in https://wikitech.wikimedia.org/wiki/User:Ladsgroup/drifts.json
+
+Please change it there.
 {% endblock %}

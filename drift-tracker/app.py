@@ -3,7 +3,6 @@ import time
 from flask import Flask, redirect, render_template, request
 
 from drift_tracker.report import get_report
-from drift_tracker.tracking import set_tracking_internal
 
 app = Flask(__name__)
 
@@ -47,25 +46,10 @@ def report(category):
         'report.html', report=report_, stats=stats, duration=duration, start_time=start_time, end_time=end_time)
 
 
-@app.route("/set-tracking", methods=['POST'])
-@app.route("/set-tracking/", methods=['POST'])
-def set_tracking():
-    name = request.form['name'].strip()
-    tracking = request.form['tracking'].strip()
-    res = set_tracking_internal(name, tracking)
-    return render_template(
-        'set_tracking_done.html',
-        res=res)
-
-
 @app.route("/set-tracking", methods=['GET'])
 @app.route("/set-tracking/", methods=['GET'])
 def set_tracking_get():
-    return render_template(
-        'set_tracking.html',
-        name=request.args.get('name', '').strip(),
-        tracking=request.args.get('tracking', '').strip()
-    )
+    return render_template('set_tracking.html')
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import re
 import time
 from collections import defaultdict
 
-from checker import Checker
+from checker import Checker, CheckerFactory
 from data_access.sql import get_table_structure_sql
 from data_access.wmf import Gerrit, get_a_wiki_from_shard, get_shard_mapping
 from domain.db import Db
@@ -83,6 +83,7 @@ def compare_table_with_prod(db, expected_table, actual_table):
         return {}
     fields_in_prod = []
     table_name = expected_table['name']
+    checker_factory = CheckerFactory(db, args.type, table_name)
     for actual_column in table_sql:
         fields_in_prod.append(actual_column['COLUMN_NAME'])
         name = actual_column['COLUMN_NAME']
@@ -92,12 +93,12 @@ def compare_table_with_prod(db, expected_table, actual_table):
                 expected_column = column
                 break
         else:
-            checker = Checker(db, table_name, name)
+            checker = checker_factory.get_checker(name)
             checker.run_check('field-mismatch-prod-extra', True)
             continue
 
         expected = Column.newFromAbstractSchema(expected_column)
-        checker = Checker(db, table_name, actual_column['COLUMN_NAME'])
+        checker = checker_factory.get_checker(actual_column['COLUMN_NAME'])
         handle_column(
             expected,
             actual_column['COLUMN_TYPE'],
@@ -105,7 +106,7 @@ def compare_table_with_prod(db, expected_table, actual_table):
             checker)
 
     for column in expected_table['columns']:
-        checker = Checker(db, table_name, actual_column['COLUMN_NAME'])
+        checker = checker_factory.get_checker(actual_column['COLUMN_NAME'])
         checker.run_check(
             'field-mismatch-codebase-extra',
             column['name'] not in fields_in_prod)
@@ -123,7 +124,7 @@ def compare_table_with_prod(db, expected_table, actual_table):
     expected_indexes = expected_table['indexes']
     expected_pk = expected_table.get('pk')
     for index in indexes:
-        checker = Checker(db, table_name, index)
+        checker = checker_factory.get_checker(index)
         if index == 'PRIMARY':
             checker.run_check(
                 'primary-key-mismatch',
@@ -149,7 +150,7 @@ def compare_table_with_prod(db, expected_table, actual_table):
         )
 
     for index in expected_indexes:
-        checker = Checker(db, table_name, index['name'])
+        checker = checker_factory.get_checker(index['name'])
         checker.run_check(
             'index-mismatch-code-extra',
             index['name'] not in indexes)

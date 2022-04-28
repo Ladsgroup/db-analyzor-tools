@@ -29,7 +29,7 @@ class Column():
         elif type_ == 'mwenum':
             type_ = 'enum'
             size_ = set([
-                i.lower() for i in schema['options'].get(
+                i for i in schema['options'].get(
                     'CustomSchemaOptions', {}).get(
                     'enum_values', [])])
         elif type_ == 'mwtimestamp':

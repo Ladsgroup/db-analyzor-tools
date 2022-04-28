@@ -1,8 +1,7 @@
 import time
 
-from flask import Flask, redirect, render_template, request
-
 from drift_tracker.report import get_report
+from flask import Flask, redirect, render_template, request
 
 app = Flask(__name__)
 

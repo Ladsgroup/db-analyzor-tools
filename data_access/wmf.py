@@ -26,17 +26,13 @@ def get_a_wiki_from_shard(shard, all_=False):
         if not line or line.startswith('#'):
             continue
         dbs_returning.append(line.strip())
-        if not all_:
+        if not all_ and shard == 's3':
             return [line.strip()]
     return dbs_returning
 
 
-def get_shard_mapping():
+def get_shard_mapping(dc):
     shard_mapping = {}
-    if '--codfw' in sys.argv:
-        dc = 'codfw'
-    else:
-        dc = 'eqiad'
     db_data = requests.get(
         'https://noc.wikimedia.org/dbconfig/{}.json'.format(dc)).json()
     for shard in db_data['sectionLoads']:

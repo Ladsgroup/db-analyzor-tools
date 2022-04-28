@@ -1,6 +1,6 @@
 
-import sys
 import json
+import sys
 
 from domain.db import Db
 

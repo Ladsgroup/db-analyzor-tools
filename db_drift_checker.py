@@ -1,19 +1,39 @@
 #!/usr/bin/python3
 
+import argparse
 import json
-import sys
+import re
 import time
+from collections import defaultdict
 
 from checker import Checker
 from data_access.sql import get_table_structure_sql
-from data_access.wmf import get_a_wiki_from_shard, get_shard_mapping, Gerrit
-from domain.table import Column
+from data_access.wmf import Gerrit, get_a_wiki_from_shard, get_shard_mapping
 from domain.db import Db
+from domain.table import Column
 
-# Proudction:
-# python3 db_drift_checker.py core "sql {wiki} -- " -prod
-# localhost:
-# python3 db_drift_checker.py core "sudo mysql -Drepo "
+parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument(
+    'type',
+    help='Type of check, core, wikibase_client, etc.')
+parser.add_argument(
+    'command',
+    help='Command to get to sql, for production it should be something like "sql {wiki} -- " and "sudo mysql " for localhost')
+parser.add_argument(
+    '--prod', action='store_true',
+    help='Whether it is happening in production or not')
+
+parser.add_argument(
+    '--wiki',
+    help='Wiki db name, for use in localhost')
+parser.add_argument(
+    '--all', action='store_true',
+    help='All wikis in sections')
+parser.add_argument(
+    '--dc', default='eqiad',
+    help='All wikis in sections')
+
+args = parser.parse_args()
 
 categories = [
     'core',
@@ -23,10 +43,10 @@ with open('abstract_paths.json', 'r') as f:
     type_to_path_mapping_abstracts = json.loads(f.read())
 
 
-def handle_column(expected: Column, field_structure, checker: Checker):
+def handle_column(expected: Column, column_type, nullable, checker: Checker):
     actual_size = None
-    if '(' in field_structure[1]:
-        actual_size = field_structure[1].split('(')[1].split(')')[0]
+    if '(' in column_type:
+        actual_size = column_type.split('(')[1].split(')')[0]
         if ',' in actual_size:
             actual_size = set(actual_size.replace(
                 '\'', '').replace('"', '').split(','))
@@ -38,41 +58,34 @@ def handle_column(expected: Column, field_structure, checker: Checker):
             the_same = actual_size == expected.size_
         checker.run_check('field-size-mismatch', not the_same)
     unsigned_mismatch = \
-        (expected.unsigned and ' unsigned' not in field_structure[1]) or \
-        (expected.unsigned is False and ' unsigned' in field_structure[1])
+        (expected.unsigned and ' unsigned' not in column_type) or \
+        (expected.unsigned is False and ' unsigned' in column_type)
     checker.run_check('field-unsigned-mismatch', unsigned_mismatch)
-    actual_type = field_structure[1].split('(')[0].split(' ')[0]
+    actual_type = column_type.split('(')[0].split(' ')[0]
     actual_type = actual_type.replace(
         'double precision', 'float').replace(
         'double', 'float')
     checker.run_check('field-type-mismatch', actual_type != expected.type_)
     nullable_mismatch = \
-        (field_structure[2] == 'no' and expected.not_null is not True) or \
-        (field_structure[2] == 'yes' and expected.not_null is not False)
+        (nullable == 'no' and expected.not_null is not True) or \
+        (nullable == 'yes' and expected.not_null is not False)
     checker.run_check('field-nullable-mismatch', nullable_mismatch)
 
 
-def compare_table_with_prod(db, expected_table, sql_command):
-    actual_table = get_table_structure_sql(
-        db.host, sql_command, expected_table['name'])
+def compare_table_with_prod(db, expected_table, actual_table):
     if not actual_table:
         print('no response')
         return {}
-    table_sql = actual_table[0]
-    table_indexes = actual_table[1]
+    table_sql = [i for i in actual_table if 'COLUMN_COMMENT' in i]
+    table_indexes = [i for i in actual_table if 'INDEX_NAME' in i]
     if not table_sql or not table_indexes:
         print('no response')
         return {}
     fields_in_prod = []
     table_name = expected_table['name']
-    for line in table_sql:
-        if line.startswith('ERROR'):
-            return
-        if not line or line.startswith('Field'):
-            continue
-        field_structure = line.lower().split('\t')
-        fields_in_prod.append(field_structure[0])
-        name = field_structure[0]
+    for actual_column in table_sql:
+        fields_in_prod.append(actual_column['COLUMN_NAME'])
+        name = actual_column['COLUMN_NAME']
         expected_column = None
         for column in expected_table['columns']:
             if column['name'] == name:
@@ -84,35 +97,34 @@ def compare_table_with_prod(db, expected_table, sql_command):
             continue
 
         expected = Column.newFromAbstractSchema(expected_column)
-        checker = Checker(db, table_name, column['name'])
-        handle_column(expected, field_structure, checker)
+        checker = Checker(db, table_name, actual_column['COLUMN_NAME'])
+        handle_column(
+            expected,
+            actual_column['COLUMN_TYPE'],
+            actual_column['IS_NULLABLE'].lower(),
+            checker)
 
     for column in expected_table['columns']:
-        checker = Checker(db, table_name, column['name'])
+        checker = Checker(db, table_name, actual_column['COLUMN_NAME'])
         checker.run_check(
             'field-mismatch-codebase-extra',
             column['name'] not in fields_in_prod)
 
     indexes = {}
-    for line in table_indexes:
-        if line.startswith('ERROR'):
-            return
-        if not line or line.startswith('Table'):
-            continue
-        index_structure = line.lower().split('\t')
-
-        if index_structure[2] not in indexes:
-            indexes[index_structure[2]] = {
-                'unique': index_structure[1] == '0',
-                'columns': [index_structure[4]]
+    for actual_index in table_indexes:
+        if actual_index['INDEX_NAME'] not in indexes:
+            indexes[actual_index['INDEX_NAME']] = {
+                'unique': actual_index['NON_UNIQUE'] == '0',
+                'columns': [actual_index['COLUMN_NAME']]
             }
         else:
-            indexes[index_structure[2]]['columns'].append(index_structure[4])
+            indexes[actual_index['INDEX_NAME']]['columns'].append(
+                actual_index['COLUMN_NAME'])
     expected_indexes = expected_table['indexes']
     expected_pk = expected_table.get('pk')
     for index in indexes:
         checker = Checker(db, table_name, index)
-        if index == 'primary':
+        if index == 'PRIMARY':
             checker.run_check(
                 'primary-key-mismatch',
                 indexes[index]['columns'] != expected_pk
@@ -147,33 +159,48 @@ def handle_wiki(shard, sql_data, hosts, wiki, sql_command):
     if shard is not None:
         sql_command = sql_command.format(wiki=wiki)
     for host in hosts:
+        db = Db(shard, host, wiki)
+        if args.wiki:
+            wiki = args.wiki
+        print(wiki, host)
+        res = get_table_structure_sql(host, sql_command, wiki, args.dc)
+        data_ = defaultdict(list)
+        for row in res.split('\n******'):
+            def_ = re.findall(
+                r'^\s*([A-Z_]+?)\s*: *(.*?) *$',
+                '\n'.join(
+                    row.split('\n')[
+                        1:]),
+                re.M)
+            if not def_:
+                continue
+            def_ = dict(def_)
+            data_[def_['TABLE_NAME']].append(def_)
         for table in sql_data:
             if table['name'] == 'searchindex':
                 continue
-            print(host, table['name'])
-            db = Db(shard, host, wiki)
-            compare_table_with_prod(db, table, sql_command)
-            time.sleep(1)
+            if table['name'] not in data_:
+                continue
+            compare_table_with_prod(db, table, data_[table['name']])
 
 
 def handle_shard(shard, sql_data, hosts, all_=False):
-    sql_command = sys.argv[2]
     if shard is not None:
         wikis = get_a_wiki_from_shard(shard, all_)
     else:
         wikis = ['']
     for wiki in wikis:
-        handle_wiki(shard, sql_data, hosts, wiki, sql_command)
+        handle_wiki(shard, sql_data, hosts, wiki, args.command)
 
 
 def handle_category(category):
     with open('drifts_{}.json'.format(category), 'w') as f:
         f.write(json.dumps({
-        '_metadata': {
-            'time_start': time.time()
-        }
-    }))
-    shard_mapping = get_shard_mapping()
+            '_metadata': {
+                'time_start': time.time()
+            }
+        }))
+    shard_mapping = get_shard_mapping(args.dc)
 
     if category in type_to_path_mapping_abstracts:
         sql_data = []
@@ -182,9 +209,9 @@ def handle_category(category):
             sql_data += json.loads(gerrit.get_file(path))
     else:
         raise Exception
-    if '-prod' in sys.argv:
+    if args.prod:
         for shard in shard_mapping:
-            handle_shard(shard, sql_data, shard_mapping[shard], False)
+            handle_shard(shard, sql_data, shard_mapping[shard], args.all)
     else:
         handle_shard(None, sql_data, ['localhost'])
 
@@ -196,7 +223,7 @@ def handle_category(category):
 
 
 def main():
-    category = sys.argv[1].lower()
+    category = args.type.lower()
     if category == 'all':
         for cat in categories:
             handle_category(cat)

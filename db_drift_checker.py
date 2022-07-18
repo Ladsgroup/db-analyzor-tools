@@ -192,7 +192,7 @@ def handle_dblist(dblist, sql_data, shard_mapping, all_=False):
         wikis = ['']
     for wiki in wikis:
         shard = shard_mapping['wikis'][wiki]
-        handle_wiki(dblist, sql_data, shard_mapping['hosts'][shard], wiki, args.command)
+        handle_wiki(shard, sql_data, shard_mapping['hosts'][shard], wiki, args.command)
 
 
 def handle_category(category):

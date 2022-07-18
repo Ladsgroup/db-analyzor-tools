@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from checker import Checker, CheckerFactory
 from data_access.sql import get_table_structure_sql
-from data_access.wmf import Gerrit, get_a_wiki_from_shard, get_shard_mapping
+from data_access.wmf import Gerrit, get_wikis_from_dblist, get_shard_mapping
 from domain.db import Db
 from domain.table import Column
 
@@ -40,7 +40,7 @@ categories = [
     'wikibase_client'
 ]
 with open('abstract_paths.json', 'r') as f:
-    type_to_path_mapping_abstracts = json.loads(f.read())
+    schema_config = json.loads(f.read())
 
 
 def handle_column(expected: Column, column_type, nullable, checker: Checker):
@@ -185,13 +185,14 @@ def handle_wiki(shard, sql_data, hosts, wiki, sql_command):
             compare_table_with_prod(db, table, data_[table['name']])
 
 
-def handle_shard(shard, sql_data, hosts, all_=False):
-    if shard is not None:
-        wikis = get_a_wiki_from_shard(shard, all_)
+def handle_dblist(dblist, sql_data, shard_mapping, all_=False):
+    if dblist is not None:
+        wikis = get_wikis_from_dblist(dblist, all_)
     else:
         wikis = ['']
     for wiki in wikis:
-        handle_wiki(shard, sql_data, hosts, wiki, args.command)
+        shard = shard_mapping['wikis'][wiki]
+        handle_wiki(dblist, sql_data, shard_mapping['hosts'][shard], wiki, args.command)
 
 
 def handle_category(category):
@@ -203,18 +204,22 @@ def handle_category(category):
         }))
     shard_mapping = get_shard_mapping(args.dc)
 
-    if category in type_to_path_mapping_abstracts:
+    if category in schema_config:
         sql_data = []
         gerrit = Gerrit()
-        for path in type_to_path_mapping_abstracts[category]:
+        for path in schema_config[category]['path']:
             sql_data += json.loads(gerrit.get_file(path))
     else:
         raise Exception
     if args.prod:
-        for shard in shard_mapping:
-            handle_shard(shard, sql_data, shard_mapping[shard], args.all)
+        if schema_config[category].get('dblist'):
+            handle_dblist(schema_config[category]['dblist'], sql_data, shard_mapping, args.all)
+        else:
+            for shard in shard_mapping:
+                handle_dblist(shard, sql_data, shard_mapping, args.all)
     else:
-        handle_shard(None, sql_data, ['localhost'])
+        # supporting localhost is fun
+        handle_dblist(None, sql_data, {'hosts': {'': ['localhost']}, 'wikis': {'': ''}})
 
     with open('drifts_{}.json'.format(category), 'r') as f:
         drifts = json.loads(f.read())

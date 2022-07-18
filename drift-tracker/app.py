@@ -7,7 +7,10 @@ app = Flask(__name__)
 
 
 valid_categories = [
-    'core'
+    'core',
+    'flaggedrevs',
+    'wikibase_repo',
+    'wikibase_client'
 ]
 
 

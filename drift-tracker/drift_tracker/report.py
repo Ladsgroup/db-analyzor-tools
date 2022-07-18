@@ -18,7 +18,7 @@ titles = {
 
 def get_report(category, untracked_only=False):
     data = requests.get(
-        'https://people.wikimedia.org/~ladsgroup/drifts_core.json').json()
+        'https://people.wikimedia.org/~ladsgroup/drifts_{category}.json'.format(category)).json()
     tracked = get_tracking_internal()
     metadata = data.get('_metadata', {})
     data = OrderedDict(sorted(

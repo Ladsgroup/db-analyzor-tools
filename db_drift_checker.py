@@ -215,7 +215,7 @@ def handle_category(category):
         if schema_config[category].get('dblist'):
             handle_dblist(schema_config[category]['dblist'], sql_data, shard_mapping, args.all)
         else:
-            for shard in shard_mapping:
+            for shard in shard_mapping['hosts']:
                 handle_dblist(shard, sql_data, shard_mapping, args.all)
     else:
         # supporting localhost is fun

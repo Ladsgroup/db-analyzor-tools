@@ -4,6 +4,240 @@
             "mediawiki/core/+/master/maintenance/tables.json"
         ]
     },
+    "abusefilter": {
+        "path": [
+            "mediawiki/extensions/AbuseFilter/+/master/db_patches/tables.json"
+        ]
+    },
+    "antispoof": {
+        "path": [
+            "mediawiki/extensions/AntiSpoof/+/master/sql/tables.json"
+        ]
+    },
+    "babel": {
+        "path": [
+            "mediawiki/extensions/Babel/+/master/sql/tables.json"
+        ]
+    },
+    "betafeatures": {
+        "path": [
+            "mediawiki/extensions/BetaFeatures/+/master/sql/tables.json"
+        ]
+    },
+    "bouncehandler": {
+        "path": [
+            "mediawiki/extensions/BounceHandler/+/master/sql/tables.json"
+        ]
+    },
+    "centralauth": {
+        "path": [
+            "mediawiki/extensions/CentralAuth/+/master/schema/tables.json"
+        ]
+    },
+    "centralnotice": {
+        "path": [
+            "mediawiki/extensions/CentralNotice/+/master/sql/tables.json"
+        ]
+    },
+    "checkuser": {
+        "path": [
+            "mediawiki/extensions/CheckUser/+/master/schema/tables.json"
+        ]
+    },
+    "cognate": {
+        "path": [
+            "mediawiki/extensions/Cognate/+/master/sql/tables.json"
+        ],
+        "dblist": "wiktionary"
+    },
+    "contenttranslation": {
+        "path": [
+            "mediawiki/extensions/ContentTranslation/+/master/sql/tables.json"
+        ]
+    },
+    "creditssource": {
+        "path": [
+            "mediawiki/extensions/CreditsSource/+/master/schema/tables.json"
+        ],
+        "dblist": "wikivoyage"
+    },
+    "discussiontools": {
+        "path": [
+            "mediawiki/extensions/DiscussionTools/+/master/sql/discussiontools_subscription.json"
+        ]
+    },
+    "echo": {
+        "path": [
+            "mediawiki/extensions/Echo/+/master/sql/tables.json"
+        ],
+        "dblist": "echo"
+    },
+    "echo_central": {
+        "path": [
+            "mediawiki/extensions/Echo/+/master/sql/tables-sharedtracking.json"
+        ]
+    },
+    "entityschema": {
+        "path": [
+            "mediawiki/extensions/EntitySchema/+/master/sql/tables.json"
+        ],
+        "dblist": "wikibaserepo"
+    },
+    "flaggedrevs": {
+        "path": [
+            "mediawiki/extensions/FlaggedRevs/+/master/backend/schema/tables.json"
+        ],
+        "dblist": "flaggedrevs"
+    },
+    "flow": {
+        "path": [
+            "mediawiki/extensions/Flow/+/master/sql/tables.json"
+        ],
+        "dblist": "flow"
+    },
+    "geodata": {
+        "path": [
+            "mediawiki/extensions/GeoData/+/master/sql/tables.json"
+        ]
+    },
+    "globalblocking": {
+        "path": [
+            "mediawiki/extensions/GlobalBlocking/+/master/sql/tables-global_block_whitelist.json"
+        ]
+    },
+    "globalblocking_central": {
+        "path": [
+            "mediawiki/extensions/GlobalBlocking/+/master/sql/tables-globalblocks.json"
+        ]
+    },
+    "globalpreferences": {
+        "path": [
+            "mediawiki/extensions/GlobalPreferences/+/master/sql/tables.json"
+        ]
+    },
+    "globalusage": {
+        "path": [
+            "mediawiki/extensions/GlobalUsage/+/master/sql/tables.json"
+        ]
+    },
+    "growthexperiments": {
+        "path": [
+            "mediawiki/extensions/GrowthExperiments/+/master/sql/growthexperiments_link_recommendations.json",
+            "mediawiki/extensions/GrowthExperiments/+/master/sql/growthexperiments_link_submissions.json",
+            "mediawiki/extensions/GrowthExperiments/+/master/sql/growthexperiments_mentee_data.json",
+            "mediawiki/extensions/GrowthExperiments/+/master/sql/growthexperiments_mentor_mentee.json"
+        ],
+        "dblist": "growthexperiments"
+    },
+    "ldapauthentication": {
+        "path": [
+            "mediawiki/extensions/LdapAuthentication/+/master/schema/tables.json"
+        ]
+    },
+    "linter": {
+        "path": [
+            "mediawiki/extensions/Linter/+/master/sql/tables.json"
+        ]
+    },
+    "liquidthreads": {
+        "path": [
+            "mediawiki/extensions/LiquidThreads/+/master/sql/tables.json"
+        ]
+    },
+    "machinevision": {
+        "path": [
+            "mediawiki/extensions/MachineVision/+/master/sql/tables.json"
+        ]
+    },
+    "math": {
+        "path": [
+            "mediawiki/extensions/Math/+/master/sql/mathlatexml.json",
+            "mediawiki/extensions/Math/+/master/sql/mathoid.json"
+        ]
+    },
+    "newsletter": {
+        "path": [
+            "mediawiki/extensions/Newsletter/+/master/sql/tables.json"
+        ]
+    },
+    "oathauth": {
+        "path": [
+            "mediawiki/extensions/OATHAuth/+/master/sql/tables.json"
+        ]
+    },
+    "oauth": {
+        "path": [
+            "mediawiki/extensions/OAuth/+/master/schema/tables.json"
+        ]
+    },
+    "oauthratelimiter": {
+        "path": [
+            "mediawiki/extensions/OAuthRateLimiter/+/master/schema/tables.json"
+        ]
+    },
+    "ores": {
+        "path": [
+            "mediawiki/extensions/ORES/+/master/sql/tables.json"
+        ]
+    },
+    "pageassessments": {
+        "path": [
+            "mediawiki/extensions/PageAssessments/+/master/db/tables.json"
+        ],
+        "dblist": "pageassessments"
+    },
+    "pagetriage": {
+        "path": [
+            "mediawiki/extensions/PageTriage/+/master/sql/tables.json"
+        ]
+    },
+    "proofreadpage": {
+        "path": [
+            "mediawiki/extensions/ProofreadPage/+/master/sql/tables.json"
+        ],
+        "dblist": "wikisource"
+    },
+    "propertysuggester": {
+        "path": [
+            "mediawiki/extensions/PropertySuggester/+/master/sql/tables.json"
+        ],
+        "dblist": "wikibaserepo"
+    },
+    "readinglists": {
+        "path": [
+            "mediawiki/extensions/ReadingLists/+/master/sql/tables.json"
+        ]
+    },
+    "securepoll": {
+        "path": [
+            "mediawiki/extensions/SecurePoll/+/master/sql/tables.json"
+        ]
+    },
+    "shorturl": {
+        "path": [
+            "mediawiki/extensions/ShortUrl/+/master/schemas/tables.json"
+        ]
+    },
+    "timedmediahandler": {
+        "path": [
+            "mediawiki/extensions/TimedMediaHandler/+/master/sql/tables.json"
+        ]
+    },
+    "translate": {
+        "path": [
+            "mediawiki/extensions/Translate/+/master/sql/tables.json"
+        ]
+    },
+    "uploadwizard": {
+        "path": [
+            "mediawiki/extensions/UploadWizard/+/master/sql/tables.json"
+        ]
+    },
+    "urlshortener": {
+        "path": [
+            "mediawiki/extensions/UrlShortener/+/master/schemas/table.json"
+        ]
+    },
     "wikibase_client": {
         "path": [
             "mediawiki/extensions/Wikibase/+/master/client/sql/abstract/entity_usage.json"
@@ -21,10 +255,20 @@
         ],
         "dblist": "wikibaserepo"
     },
-    "flaggedrevs": {
+    "wikibasequalityconstraints": {
         "path": [
-            "mediawiki/extensions/FlaggedRevs/+/master/backend/schema/tables.json"
+            "mediawiki/extensions/WikibaseQualityConstraints/+/master/sql/tables.json"
         ],
-        "dblist": "flaggedrevs"
+        "dblist": "wikibaserepo"
+    },
+    "wikilove": {
+        "path": [
+            "mediawiki/extensions/WikiLove/+/master/patches/tables.json"
+        ]
+    },
+    "wikimediaeditortasks": {
+        "path": [
+            "mediawiki/extensions/WikimediaEditorTasks/+/master/sql/tables.json"
+        ]
     }
 }

@@ -258,7 +258,8 @@
     "wikibasequalityconstraints": {
         "path": [
             "mediawiki/extensions/WikibaseQualityConstraints/+/master/sql/tables.json"
-        ]
+        ],
+        "dblist": "wikibaserepo"
     },
     "wikilove": {
         "path": [

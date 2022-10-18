@@ -10,7 +10,8 @@ valid_categories = [
     'core',
     'flaggedrevs',
     'wikibase_repo',
-    'wikibase_client'
+    'wikibase_client',
+    'checkuser',
 ]
 
 

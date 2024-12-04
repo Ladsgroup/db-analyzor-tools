@@ -12,6 +12,8 @@ valid_categories = [
     'wikibase_repo',
     'wikibase_client',
     'checkuser',
+    'globalblocking',
+    'globalblocking_central',
 ]
 
 

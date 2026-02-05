@@ -27,6 +27,10 @@ parser.add_argument(
     '--wiki',
     help='Wiki db name, for use in localhost')
 parser.add_argument(
+    '--dbprefix',
+    help='Prefix for database tables'
+)
+parser.add_argument(
     '--all', action='store_true',
     help='All wikis in sections')
 parser.add_argument(
@@ -176,6 +180,12 @@ def handle_wiki(shard, sql_data, hosts, wiki, sql_command):
             if not def_:
                 continue
             def_ = dict(def_)
+            if args.dbprefix:
+                # Only use tables that have the prefix, to avoid overwriting
+                # data with unrelated tables
+                if not def_['TABLE_NAME'].startswith(args.dbprefix):
+                    continue
+                def_['TABLE_NAME'] = def_['TABLE_NAME'].removeprefix(args.dbprefix)
             data_[def_['TABLE_NAME']].append(def_)
         for table in sql_data:
             if table['name'] == 'searchindex':

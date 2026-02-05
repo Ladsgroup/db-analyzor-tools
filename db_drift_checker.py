@@ -202,7 +202,6 @@ def handle_category(category):
                 'time_start': time.time()
             }
         }))
-    shard_mapping = get_shard_mapping(args.dc)
 
     if category in schema_config:
         sql_data = []
@@ -212,6 +211,7 @@ def handle_category(category):
     else:
         raise Exception
     if args.prod:
+        shard_mapping = get_shard_mapping(args.dc)
         if schema_config[category].get('dblist'):
             handle_dblist(schema_config[category]['dblist'], sql_data, shard_mapping, args.all)
         else:

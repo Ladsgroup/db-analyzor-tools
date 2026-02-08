@@ -109,6 +109,11 @@ def compare_table_with_prod(db, expected_table, actual_table):
             actual_column['IS_NULLABLE'].lower(),
             checker)
 
+        checker.run_check(
+            'field-auto-increment-mismatch',
+            ( 'auto_increment' in actual_column['EXTRA'] ) != expected.auto_increment
+        )
+
     for column in expected_table['columns']:
         checker = checker_factory.get_checker(actual_column['COLUMN_NAME'])
         checker.run_check(

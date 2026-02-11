@@ -3,7 +3,7 @@ import sys
 from subprocess import PIPE, TimeoutExpired, run
 
 
-def get_table_structure_sql(host, sql_command, db, dc):
+def get_table_structure_sql(host, sql_command, db, dc, skip_host):
     port = None
     if host != 'localhost':
         if re.search(r' \-\-(?: |$)', sql_command):
@@ -15,10 +15,12 @@ def get_table_structure_sql(host, sql_command, db, dc):
         host += '.{}.wmnet'.format(dc)
     if port:
         sql_command += ' -P ' + port
-    command = 'timeout 6 {} -h {} -e ' + \
+    if not skip_host:
+        sql_command += '-h ' + host
+    command = 'timeout 6 {} -e ' + \
         '"select * FROM information_schema.columns WHERE table_schema = \'{}\'\\G; ' + \
         'SELECT * FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = \'{}\'\\G;"'
-    command = command.format(sql_command, host, db, db)
+    command = command.format(sql_command, db, db)
     try:
         res = run(
             command,

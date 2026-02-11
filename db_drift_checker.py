@@ -36,6 +36,10 @@ parser.add_argument(
 parser.add_argument(
     '--dc', default='eqiad',
     help='All wikis in sections')
+parser.add_argument(
+    '--skip-host', action='store_true',
+    help='Skip the addition of the host parameter to the sql command invocation'
+)
 
 args = parser.parse_args()
 
@@ -173,7 +177,7 @@ def handle_wiki(shard, sql_data, hosts, wiki, sql_command):
         if args.wiki:
             wiki = args.wiki
         print(wiki, host)
-        res = get_table_structure_sql(host, sql_command, wiki, args.dc)
+        res = get_table_structure_sql(host, sql_command, wiki, args.dc, args.skip_host)
         data_ = defaultdict(list)
         for row in res.split('\n******'):
             def_ = re.findall(

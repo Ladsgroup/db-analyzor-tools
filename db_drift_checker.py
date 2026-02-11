@@ -40,6 +40,10 @@ parser.add_argument(
     '--skip-host', action='store_true',
     help='Skip the addition of the host parameter to the sql command invocation'
 )
+parser.add_argument(
+    '--gerrit-schema-file',
+    help='Custom abstract schema file to read from, like `mediawiki/core/+/REL1_43/maintenance/tables.json`'
+)
 
 args = parser.parse_args()
 
@@ -223,12 +227,19 @@ def handle_category(category):
         }))
 
     if category in schema_config:
+        if args.gerrit_schema_file:
+            raise Exception("--gerrit-schema-file should only be used with the 'custom' type")
         sql_data = []
         gerrit = Gerrit()
         for path in schema_config[category]['path']:
             sql_data += json.loads(gerrit.get_file(path))
+    elif category == 'custom':
+        if not args.gerrit_schema_file:
+            raise Exception("'custom' type requires --gerrit-schema-file to be provided")
+        gerrit = Gerrit()
+        sql_data = json.loads(gerrit.get_file(args.gerrit_schema_file))    
     else:
-        raise Exception
+        raise Exception("Unsupported type %s, consider using type 'custom' and --gerrit-schema-file" % category)
     if args.prod:
         shard_mapping = get_shard_mapping(args.dc)
         if schema_config[category].get('dblist'):

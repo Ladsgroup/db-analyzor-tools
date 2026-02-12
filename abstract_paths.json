@@ -1,7 +1,7 @@
 {
     "core": {
         "path": [
-            "mediawiki/core/+/master/maintenance/tables.json"
+            "mediawiki/core/+/master/sql/tables.json"
         ]
     },
     "abusefilter": {

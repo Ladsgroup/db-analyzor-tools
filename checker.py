@@ -1,16 +1,13 @@
-
-import json
-import sys
-
 from domain.db import Db
 
 
 class Checker(object):
-    def __init__(self, db: Db, table_name, piece_name, category):
+    def __init__(self, db: Db, table_name, piece_name, drifts):
         self.db = db
         self.table_name = table_name
         self.piece_name = piece_name
-        self.category = category
+        # Shared in-memory dict, written to disk once at the end of the run
+        self.drifts = drifts
 
     def run_check(self, drift_type, check):
         if not check:
@@ -19,25 +16,15 @@ class Checker(object):
 
     def _report(self, drift_type):
         drift = ' '.join([self.table_name, self.piece_name, drift_type])
-        shard = self.db.section
-        with open('drifts_{}.json'.format(self.category), 'r') as f:
-            drifts = json.loads(f.read())
-
-        if drift not in drifts:
-            drifts[drift] = {}
-        if shard not in drifts[drift]:
-            drifts[drift][shard] = []
-        drifts[drift][shard].append('%s:%s' % (self.db.host, self.db.wiki))
-
-        with open('drifts_{}.json'.format(self.category), 'w') as f:
-            f.write(json.dumps(drifts, indent=4, sort_keys=True))
+        self.drifts.setdefault(drift, {}).setdefault(self.db.section, []).append(
+            '%s:%s' % (self.db.host, self.db.wiki))
 
 
 class CheckerFactory():
-    def __init__(self, db: Db, category, table_name):
+    def __init__(self, db: Db, drifts, table_name):
         self.db = db
-        self.category = category
+        self.drifts = drifts
         self.table_name = table_name
 
-    def get_checker(self,  piece_name):
-        return Checker(self.db, self.table_name, piece_name, self.category)
+    def get_checker(self, piece_name):
+        return Checker(self.db, self.table_name, piece_name, self.drifts)

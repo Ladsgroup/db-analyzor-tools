@@ -3,19 +3,25 @@
 import argparse
 import json
 import re
+import sys
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+
+import requests
 
 from checker import Checker, CheckerFactory
 from data_access.sql import get_table_structure_sql
-from data_access.wmf import Gerrit, get_wikis_from_dblist, get_shard_mapping
+from data_access.wmf import (Gerrit, get_shard_mapping, get_table_catalog,
+                             get_wikis_from_dblist)
 from domain.db import Db
 from domain.table import Column
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument(
     'type',
-    help='Type of check, core, wikibase_client, etc.')
+    help='Source of tables in the table catalog (core, wikibase_client, etc.), '
+         '"all" for every source, or "custom" with --gerrit-schema-file')
 parser.add_argument(
     'command',
     help='Command to get to sql, for production it should be something like "sql {wiki} -- " and "sudo mysql " for localhost')
@@ -44,15 +50,12 @@ parser.add_argument(
     '--gerrit-schema-file',
     help='Custom abstract schema file to read from, like `mediawiki/core/+/REL1_43/maintenance/tables.json`'
 )
+parser.add_argument(
+    '--jobs', type=int, default=8,
+    help='Number of database queries to run in parallel'
+)
 
-args = parser.parse_args()
-
-categories = [
-    'core',
-    'wikibase_client'
-]
-with open('abstract_paths.json', 'r') as f:
-    schema_config = json.loads(f.read())
+args = None
 
 
 def handle_column(expected: Column, column_type, nullable, checker: Checker):
@@ -84,7 +87,7 @@ def handle_column(expected: Column, column_type, nullable, checker: Checker):
     checker.run_check('field-nullable-mismatch', nullable_mismatch)
 
 
-def compare_table_with_prod(db, expected_table, actual_table):
+def compare_table_with_prod(db, expected_table, actual_table, drifts):
     if not actual_table:
         print('no response')
         return {}
@@ -95,7 +98,7 @@ def compare_table_with_prod(db, expected_table, actual_table):
         return {}
     fields_in_prod = []
     table_name = expected_table['name']
-    checker_factory = CheckerFactory(db, args.type, table_name)
+    checker_factory = CheckerFactory(db, drifts, table_name)
     for actual_column in table_sql:
         fields_in_prod.append(actual_column['COLUMN_NAME'])
         name = actual_column['COLUMN_NAME']
@@ -123,7 +126,7 @@ def compare_table_with_prod(db, expected_table, actual_table):
         )
 
     for column in expected_table['columns']:
-        checker = checker_factory.get_checker(actual_column['COLUMN_NAME'])
+        checker = checker_factory.get_checker(column['name'])
         checker.run_check(
             'field-mismatch-codebase-extra',
             column['name'] not in fields_in_prod)
@@ -173,98 +176,154 @@ def compare_table_with_prod(db, expected_table, actual_table):
             index['name'] not in indexes)
 
 
-def handle_wiki(shard, sql_data, hosts, wiki, sql_command):
-    if shard is not None:
-        sql_command = sql_command.format(wiki=wiki)
-    for host in hosts:
-        db = Db(shard, host, wiki)
-        if args.wiki:
-            wiki = args.wiki
-        print(wiki, host)
-        res = get_table_structure_sql(host, sql_command, wiki, args.dc, args.skip_host)
-        data_ = defaultdict(list)
-        for row in res.split('\n******'):
-            def_ = re.findall(
-                r'^\s*([A-Z_]+?)\s*: *(.*?) *$',
-                '\n'.join(
-                    row.split('\n')[
-                        1:]),
-                re.M)
-            if not def_:
+def parse_sql_output(res):
+    """Group the information_schema rows by table name."""
+    data_ = defaultdict(list)
+    for row in res.split('\n******'):
+        def_ = re.findall(
+            r'^\s*([A-Z_]+?)\s*: *(.*?) *$',
+            '\n'.join(row.split('\n')[1:]),
+            re.M)
+        if not def_:
+            continue
+        def_ = dict(def_)
+        if args.dbprefix:
+            # Only use tables that have the prefix, to avoid overwriting
+            # data with unrelated tables
+            if not def_['TABLE_NAME'].startswith(args.dbprefix):
                 continue
-            def_ = dict(def_)
-            if args.dbprefix:
-                # Only use tables that have the prefix, to avoid overwriting
-                # data with unrelated tables
-                if not def_['TABLE_NAME'].startswith(args.dbprefix):
-                    continue
-                def_['TABLE_NAME'] = def_['TABLE_NAME'].removeprefix(args.dbprefix)
-            data_[def_['TABLE_NAME']].append(def_)
-        for table in sql_data:
-            if table['name'] == 'searchindex':
-                continue
-            if table['name'] not in data_:
-                continue
-            compare_table_with_prod(db, table, data_[table['name']])
+            def_['TABLE_NAME'] = def_['TABLE_NAME'].removeprefix(args.dbprefix)
+        data_[def_['TABLE_NAME']].append(def_)
+    return data_
 
 
-def handle_dblist(dblist, sql_data, shard_mapping, all_=False):
-    if dblist is not None:
-        wikis = get_wikis_from_dblist(dblist, all_)
-    else:
-        wikis = ['']
-    for wiki in wikis:
-        shard = shard_mapping['wikis'][wiki]
-        handle_wiki(shard, sql_data, shard_mapping['hosts'][shard], wiki, args.command)
-
-
-def handle_category(category):
-    with open('drifts_{}.json'.format(category), 'w') as f:
-        f.write(json.dumps({
-            '_metadata': {
-                'time_start': time.time()
-            }
-        }))
-
-    if category in schema_config:
-        if args.gerrit_schema_file:
-            raise Exception("--gerrit-schema-file should only be used with the 'custom' type")
-        sql_data = []
-        gerrit = Gerrit()
-        for path in schema_config[category]['path']:
-            sql_data += json.loads(gerrit.get_file(path))
-    elif category == 'custom':
+def get_expected_tables(category, catalog):
+    """Map of table name to (source, abstract schema of the table)."""
+    if category == 'custom':
         if not args.gerrit_schema_file:
             raise Exception("'custom' type requires --gerrit-schema-file to be provided")
-        gerrit = Gerrit()
-        sql_data = json.loads(gerrit.get_file(args.gerrit_schema_file))    
+        schema = json.loads(Gerrit().get_file(args.gerrit_schema_file))
+        return {table['name']: ('custom', table) for table in schema}
+    if args.gerrit_schema_file:
+        raise Exception("--gerrit-schema-file should only be used with the 'custom' type")
+    if category == 'all':
+        sources = catalog['sources']
+    elif category in catalog['sources']:
+        sources = {category: catalog['sources'][category]}
     else:
-        raise Exception("Unsupported type %s, consider using type 'custom' and --gerrit-schema-file" % category)
+        raise Exception(
+            "Unsupported type %s, use a source from the table catalog or type 'custom' "
+            "and --gerrit-schema-file" % category)
+    files = [(source, f['gerrit']) for source, files in sources.items() for f in files]
+    def get_schema(url):
+        try:
+            return json.loads(Gerrit().get_url(url))
+        except requests.HTTPError as e:
+            # The catalog can point to files that are moved or removed
+            print('Skipping schema file: {}'.format(e), file=sys.stderr)
+            return []
+
+    with ThreadPoolExecutor(args.jobs) as pool:
+        schemas = pool.map(get_schema, [url for _, url in files])
+    tables = {}
+    for (source, _), schema in zip(files, schemas):
+        for table in schema:
+            if table['name'] != 'searchindex':
+                tables[table['name']] = (source, table)
+    return tables
+
+
+def get_targets(table_names, catalog, shard_mapping):
+    """Map of (section, wiki) to the table names expected there.
+
+    Placement comes from the table catalog. Tables without placement
+    information are expected on every wiki.
+    """
+    placements = {t['name']: t for t in catalog['tables']}
+    every_wiki = []
+    for shard in shard_mapping['wikis'].values():
+        if shard not in every_wiki:
+            every_wiki.append(shard)
+    # Resolve once, so that the random sample of s3 is the same for all tables
+    every_wiki = [w for shard in every_wiki for w in get_wikis_from_dblist(shard, args.all)]
+
+    targets = defaultdict(set)
+    for name in table_names:
+        placement = placements.get(name, {})
+        if placement.get('databases'):
+            locations = placement['databases']
+        elif placement.get('dblist'):
+            locations = [{'dblist': placement['dblist']}]
+        else:
+            locations = [{}]
+        for location in locations:
+            if 'dbname' in location:
+                wikis = [location['dbname']]
+            elif 'dblist' in location:
+                wikis = get_wikis_from_dblist(location['dblist'], True)
+            else:
+                wikis = every_wiki
+            for wiki in wikis:
+                section = location.get('cluster') or shard_mapping['wikis'].get(wiki)
+                if section not in shard_mapping['hosts']:
+                    print('Skipping {} on {}: unknown section {}'.format(
+                        name, wiki, section), file=sys.stderr)
+                    continue
+                targets[(section, wiki)].add(name)
+    return targets
+
+
+def fetch(job):
+    section, host, wiki, _ = job
+    sql_command = args.command.format(wiki=wiki)
+    return get_table_structure_sql(host, sql_command, wiki, args.dc, args.skip_host)
+
+
+def run_checks(category):
+    time_start = time.time()
+    catalog = get_table_catalog() if category != 'custom' or args.prod else None
+    expected = get_expected_tables(category, catalog)
     if args.prod:
         shard_mapping = get_shard_mapping(args.dc)
-        if schema_config[category].get('dblist'):
-            handle_dblist(schema_config[category]['dblist'], sql_data, shard_mapping, args.all)
-        else:
-            for shard in shard_mapping['hosts']:
-                handle_dblist(shard, sql_data, shard_mapping, args.all)
+        targets = get_targets(expected, catalog, shard_mapping)
     else:
         # supporting localhost is fun
-        handle_dblist(None, sql_data, {'hosts': {'': ['localhost']}, 'wikis': {'': ''}})
+        shard_mapping = {'hosts': {'': ['localhost']}}
+        targets = {('', args.wiki or ''): set(expected)}
 
-    with open('drifts_{}.json'.format(category), 'r') as f:
-        drifts = json.loads(f.read())
-    drifts['_metadata']['time_end'] = time.time()
-    with open('drifts_{}.json'.format(category), 'w') as f:
-        f.write(json.dumps(drifts, indent=4, sort_keys=True))
+    jobs = [
+        (section, host, wiki, sorted(names))
+        for (section, wiki), names in sorted(targets.items())
+        for host in shard_mapping['hosts'][section]
+    ]
+    drifts = {source: {} for source, _ in expected.values()}
+    # Queries run in parallel, comparisons run in order in this thread
+    with ThreadPoolExecutor(args.jobs) as pool:
+        for job, res in zip(jobs, pool.map(fetch, jobs)):
+            section, host, wiki, names = job
+            print(wiki, host)
+            db = Db(section, host, wiki)
+            data_ = parse_sql_output(res)
+            for name in names:
+                if name not in data_:
+                    continue
+                source, table = expected[name]
+                compare_table_with_prod(db, table, data_[name], drifts[source])
+
+    for source, source_drifts in drifts.items():
+        source_drifts['_metadata'] = {
+            'time_start': time_start,
+            'time_end': time.time()
+        }
+        with open('drifts_{}.json'.format(source), 'w') as f:
+            f.write(json.dumps(source_drifts, indent=4, sort_keys=True))
 
 
-def main():
-    category = args.type.lower()
-    if category == 'all':
-        for cat in categories:
-            handle_category(cat)
-    else:
-        handle_category(category)
+def main(argv=None):
+    global args
+    args = parser.parse_args(argv)
+    run_checks(args.type.lower())
 
 
-main()
+if __name__ == '__main__':
+    main()

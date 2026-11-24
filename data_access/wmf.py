@@ -1,8 +1,12 @@
 import base64
 import random
-import sys
+from functools import lru_cache
 
 import requests
+
+# Wikimedia servers reject requests without a user agent
+session = requests.Session()
+session.headers['User-Agent'] = 'db-analyzor-tools (https://github.com/Ladsgroup/db-analyzor-tools)'
 
 
 class Gerrit(object):
@@ -10,16 +14,24 @@ class Gerrit(object):
         self.url = 'https://gerrit.wikimedia.org/g/'
 
     def get_file(self, path):
-        url = '{0}{1}?format=TEXT'.format(self.url, path)
-        return base64.b64decode(requests.get(url).text).decode('utf-8')
+        return self.get_url(self.url + path)
+
+    def get_url(self, url):
+        """Fetch a file from a gitiles URL."""
+        res = session.get(url + '?format=TEXT')
+        res.raise_for_status()
+        return base64.b64decode(res.text).decode('utf-8')
+
+
+@lru_cache(maxsize=None)
+def _get_dblist(dblist):
+    return Gerrit().get_file(
+        'operations/mediawiki-config/+/master/dblists/{dblist}.dblist'.format(
+            dblist=dblist))
 
 
 def get_wikis_from_dblist(dblist, all_=False):
-    gerrit = Gerrit()
-    file_ = gerrit.get_file(
-        'operations/mediawiki-config/+/master/dblists/{dblist}.dblist'.format(
-            dblist=dblist))
-    dbs = file_.split('\n')
+    dbs = _get_dblist(dblist).split('\n')
     random.shuffle(dbs)
     dbs_returning = []
     for line in dbs:
@@ -33,7 +45,7 @@ def get_wikis_from_dblist(dblist, all_=False):
 
 def get_shard_mapping(dc):
     shard_mapping = {'hosts': {}, 'wikis': {}}
-    db_data = requests.get(
+    db_data = session.get(
         'https://noc.wikimedia.org/dbconfig/{}.json'.format(dc)).json()
     for shard in db_data['sectionLoads']:
         cases = []
@@ -47,4 +59,13 @@ def get_shard_mapping(dc):
         wikis = get_wikis_from_dblist(name, True)
         for wiki in wikis:
             shard_mapping['wikis'][wiki] = name
+    # External clusters (e.g. x1) only hold shared or extension tables
+    for cluster, loads in db_data['externalLoads'].items():
+        shard_mapping['hosts'][cluster] = [h for type_ in loads for h in type_]
     return shard_mapping
+
+
+def get_table_catalog():
+    """Catalog of production tables: their schema sources and placement."""
+    return session.get(
+        'https://config-master.wikimedia.org/mediawiki-tables.json').json()

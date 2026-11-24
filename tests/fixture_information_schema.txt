@@ -1,0 +1,81 @@
+*************************** 1. row ***************************
+ TABLE_CATALOG: def
+  TABLE_SCHEMA: wiki
+    TABLE_NAME: foo
+   COLUMN_NAME: id
+   COLUMN_TYPE: int(10) unsigned
+   IS_NULLABLE: NO
+         EXTRA: auto_increment
+COLUMN_COMMENT: 
+*************************** 2. row ***************************
+ TABLE_CATALOG: def
+  TABLE_SCHEMA: wiki
+    TABLE_NAME: foo
+   COLUMN_NAME: foo_name
+   COLUMN_TYPE: varbinary(200)
+   IS_NULLABLE: NO
+         EXTRA: 
+COLUMN_COMMENT: 
+*************************** 3. row ***************************
+ TABLE_CATALOG: def
+  TABLE_SCHEMA: wiki
+    TABLE_NAME: foo
+   COLUMN_NAME: foo_flag
+   COLUMN_TYPE: tinyint(3) unsigned
+   IS_NULLABLE: YES
+         EXTRA: 
+COLUMN_COMMENT: 
+*************************** 4. row ***************************
+ TABLE_CATALOG: def
+  TABLE_SCHEMA: wiki
+    TABLE_NAME: foo
+   COLUMN_NAME: foo_prod_only
+   COLUMN_TYPE: blob
+   IS_NULLABLE: YES
+         EXTRA: 
+COLUMN_COMMENT: 
+*************************** 5. row ***************************
+ TABLE_CATALOG: def
+  TABLE_SCHEMA: wiki
+    TABLE_NAME: bar
+   COLUMN_NAME: bar_id
+   COLUMN_TYPE: int(11)
+   IS_NULLABLE: NO
+         EXTRA: 
+COLUMN_COMMENT: 
+*************************** 6. row ***************************
+TABLE_CATALOG: def
+ TABLE_SCHEMA: wiki
+   TABLE_NAME: foo
+   NON_UNIQUE: 0
+   INDEX_NAME: PRIMARY
+ SEQ_IN_INDEX: 1
+  COLUMN_NAME: id
+   INDEX_TYPE: BTREE
+*************************** 7. row ***************************
+TABLE_CATALOG: def
+ TABLE_SCHEMA: wiki
+   TABLE_NAME: foo
+   NON_UNIQUE: 1
+   INDEX_NAME: foo_name
+ SEQ_IN_INDEX: 1
+  COLUMN_NAME: foo_name
+   INDEX_TYPE: BTREE
+*************************** 8. row ***************************
+TABLE_CATALOG: def
+ TABLE_SCHEMA: wiki
+   TABLE_NAME: foo
+   NON_UNIQUE: 1
+   INDEX_NAME: foo_prod_idx
+ SEQ_IN_INDEX: 1
+  COLUMN_NAME: foo_flag
+   INDEX_TYPE: BTREE
+*************************** 9. row ***************************
+TABLE_CATALOG: def
+ TABLE_SCHEMA: wiki
+   TABLE_NAME: bar
+   NON_UNIQUE: 0
+   INDEX_NAME: PRIMARY
+ SEQ_IN_INDEX: 1
+  COLUMN_NAME: bar_id
+   INDEX_TYPE: BTREE

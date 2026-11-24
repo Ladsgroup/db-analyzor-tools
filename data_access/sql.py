@@ -16,7 +16,7 @@ def get_table_structure_sql(host, sql_command, db, dc, skip_host):
     if port:
         sql_command += ' -P ' + port
     if not skip_host:
-        sql_command += '-h ' + host
+        sql_command += ' -h ' + host
     command = 'timeout 6 {} -e ' + \
         '"select * FROM information_schema.columns WHERE table_schema = \'{}\'\\G; ' + \
         'SELECT * FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = \'{}\'\\G;"'

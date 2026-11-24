@@ -10,7 +10,7 @@ session = requests.Session()
 session.headers['User-Agent'] = 'drift-tracker (https://drift-tracker.toolforge.org/)'
 
 # Reports are uploaded to the git-ignored drifts/ directory of the repository
-DEFAULT_DRIFTS_DIR = Path(__file__).resolve().parents[2] / 'drifts'
+DEFAULT_DRIFTS_DIR = 'drifts'
 CATALOG_URL = 'https://config-master.wikimedia.org/mediawiki-tables.json'
 TRACKING_URL = 'https://wikitech.wikimedia.org/w/index.php?title=User:Ladsgroup/drifts.json&action=raw'
 

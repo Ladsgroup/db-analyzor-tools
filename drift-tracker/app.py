@@ -1,61 +1,53 @@
-import time
+import re
 
-from drift_tracker.report import get_report
-from flask import Flask, redirect, render_template, request
+from flask import Flask, abort, redirect, render_template, request, url_for
+
+from drift_tracker.report import WIDESPREAD, get_report
+from drift_tracker.sources import get_categories
 
 app = Flask(__name__)
+app.url_map.strict_slashes = False
+
+CATEGORY_RE = re.compile(r'^[a-z0-9_]+$')
 
 
-valid_categories = [
-    'core',
-    'flaggedrevs',
-    'wikibase_repo',
-    'wikibase_client',
-    'checkuser',
-    'globalblocking',
-    'globalblocking_central',
-]
+@app.context_processor
+def inject_categories():
+    return {'categories': get_categories()}
 
 
-@app.route("/")
-@app.route("/report/")
-@app.route("/report")
-def hello():
-    return redirect("/report/core")
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 
-@app.route("/report/<category>")
-@app.route("/report/<category>/")
+@app.route('/report')
+def report_index():
+    return redirect(url_for('report', category='core'))
+
+
+@app.route('/report/<category>')
 def report(category):
-    if category not in valid_categories:
-        return render_template('page_not_found.html'), 404
-    res = get_report(category, request.args.get('untrackedOnly', False))
-    report_ = res['report']
-    start_time = res['metadata'].get('time_start')
-    end_time = res['metadata'].get('time_end')
-    duration = None
-    if start_time and end_time:
-        duration = int(end_time) - int(start_time)
-        duration = "{:04.2f}".format(duration/3600)
-    if end_time:
-        end_time = time.strftime('%d %b %Y %H:%M:%S', time.gmtime(end_time))
-    if start_time:
-        start_time = time.strftime('%d %b %Y %H:%M:%S', time.gmtime(start_time))
-    stats = {
-        'total': len(report_),
-        'widespread': len([i for i in report_ if i['section_count'] > 5]),
-        'untracked': len([i for i in report_ if not i['tracked']]),
-        'untracked_widespread': len([i for i in report_ if i['section_count'] > 5 and not i['tracked']]),
-    }
+    if not CATEGORY_RE.match(category) or category not in get_categories():
+        abort(404)
     return render_template(
-        'report.html', report=report_, stats=stats, duration=duration, start_time=start_time, end_time=end_time)
+        'report.html',
+        category=category,
+        report=get_report(category),
+        widespread=WIDESPREAD,
+        untracked_only=bool(request.args.get('untrackedOnly')),
+    )
 
 
-@app.route("/set-tracking", methods=['GET'])
-@app.route("/set-tracking/", methods=['GET'])
-def set_tracking_get():
+@app.route('/set-tracking')
+def set_tracking():
     return render_template('set_tracking.html')
 
 
-if __name__ == "__main__":
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('page_not_found.html'), 404
+
+
+if __name__ == '__main__':
     app.run(host='0.0.0.0')

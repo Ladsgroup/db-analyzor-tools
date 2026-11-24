@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3">Database schema drifts</h1>
+<p class="text-muted">
+    Differences between the abstract schema of MediaWiki and the production databases,
+    found by <code>db_drift_checker.py</code>. Categories are the sources of the
+    <a href="https://config-master.wikimedia.org/mediawiki-tables.json">table catalog</a>.
+</p>
+<div class="row row-cols-2 row-cols-md-3 row-cols-lg-4 g-2">
+    {% for c in categories %}
+    <div class="col">
+        <a class="d-block bg-white border rounded px-3 py-2 text-decoration-none text-truncate"
+           href="{{ url_for('report', category=c) }}">{{ c }}</a>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

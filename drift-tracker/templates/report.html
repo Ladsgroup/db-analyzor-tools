@@ -1,57 +1,135 @@
 {% extends "base.html" %}
+{% block title %}{{ category }} · Drift tracker{% endblock %}
 {% block content %}
-<style>
-    summary {
-        cursor: pointer;
-    }
-    .untracked {
-        border: 1px #d33 solid;
-        background-color: #fee7e6;
-        margin: 5px;
-        padding: 5px;
-    }
-    .tracked {
-        border: 1px #a2a9b1 solid;
-        background-color: #eaecf0;
-        margin: 5px;
-        padding: 5px;
-    }
-    .table {
-        background-color: #f8f9fa;
-        margin: 5px;
-    }
-</style>
-<div class="content">
-    <b><a href='?untrackedOnly=1'>See only not-tracked drifts</a></b><br>
-    <b>Number of widespread drift groups (more than 5 sections):</b> {{ stats.widespread }} ({{ stats.untracked_widespread }} not tracked)<br>
-    <b>Total number of drift groups:</b> {{ stats.total }} ({{ stats.untracked }} not tracked)<br>
-    {% if start_time %}<b>Start time of building the report:</b> {{ start_time }}<br>{% endif %}
-    {% if end_time %}<b>End time of building the report:</b> {{ end_time }}<br>{% endif %}
-    {% if duration %}<b>Time to build the report:</b> {{ duration }} hours<br>{% endif %}
-    {% for i in report %}
-    <div class="drift {% if i.tracked %}tracked{% else %}untracked{% endif %}">
-        <h2>{{i.name}}</h2>
-        <b>Sections having this drift:</b> {{i.section_count}} ({{i.sections}})<br>
-        {% if i.tracked %}
-        <b>Tracked in <a href="https://phabricator.wikimedia.org/{{i.tracked}}">{{i.tracked}}</a></b>
-        {% else %}
-        <b>Not tracked</b> (<a href="/set-tracking/?name={{i.code}}">Set tracking</a> or <a href="https://phabricator.wikimedia.org/maniphest/task/edit/form/1/">create ticket</a>)
-        {% endif %}
+<h1 class="h3 mb-3">Drifts of <code>{{ category }}</code></h1>
+
+{% if report is none %}
+<div class="alert alert-secondary">
+    No drift report is published for this category yet.
+</div>
+{% else %}
+<div class="row g-2 mb-3">
+    <div class="col-6 col-md-3"><div class="stat bg-white border rounded p-3">
+        <div class="value">{{ report.stats.total }}</div><div class="text-muted small">drifts</div>
+    </div></div>
+    <div class="col-6 col-md-3"><div class="stat bg-white border rounded p-3">
+        <div class="value text-danger">{{ report.stats.untracked }}</div><div class="text-muted small">not tracked</div>
+    </div></div>
+    <div class="col-6 col-md-3"><div class="stat bg-white border rounded p-3">
+        <div class="value">{{ report.stats.widespread }}</div><div class="text-muted small">widespread (&gt; {{ widespread }} sections)</div>
+    </div></div>
+    <div class="col-6 col-md-3"><div class="stat bg-white border rounded p-3">
+        <div class="value text-danger">{{ report.stats.untracked_widespread }}</div><div class="text-muted small">widespread, not tracked</div>
+    </div></div>
+</div>
+
+{% if report.end_time %}
+<p class="small text-muted">
+    Report built {% if report.start_time %}from {{ report.start_time }} {% endif %}to {{ report.end_time }}
+    {% if report.duration %}({{ report.duration }} hours){% endif %}
+</p>
+{% endif %}
+
+{% if report.drifts %}
+<form id="filters" class="row g-2 align-items-center mb-3" onsubmit="return false">
+    <div class="col-12 col-md-4">
+        <input id="f-search" type="search" class="form-control form-control-sm" placeholder="Filter by table, field, wiki or host">
+    </div>
+    <div class="col-6 col-md-3">
+        <select id="f-type" class="form-select form-select-sm">
+            <option value="">All drift types</option>
+            {% for t in report.types %}<option>{{ t }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="col-6 col-md-2">
+        <select id="f-status" class="form-select form-select-sm">
+            <option value="">Any status</option>
+            <option value="untracked" {% if untracked_only %}selected{% endif %}>Not tracked</option>
+            <option value="tracked">Tracked</option>
+        </select>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="form-check">
+            <input id="f-widespread" class="form-check-input" type="checkbox">
+            <label class="form-check-label small" for="f-widespread">Widespread only</label>
+        </div>
+    </div>
+    <div class="col-6 col-md-1 text-end small text-muted"><span id="f-count"></span></div>
+</form>
+{% else %}
+<div class="alert alert-success">No drifts found.</div>
+{% endif %}
+
+{% for d in report.drifts %}
+<div class="drift card mb-2 {{ 'tracked' if d.tracked else 'untracked' }}"
+     data-status="{{ 'tracked' if d.tracked else 'untracked' }}"
+     data-type="{{ d.type }}"
+     data-widespread="{{ 1 if d.widespread else 0 }}"
+     data-search="{{ d.code }} {% for h in d.hosts %}{{ h.host }} {{ h.wiki }} {% endfor %}">
+    <div class="card-body py-2">
+        <div class="d-flex flex-wrap justify-content-between gap-2">
+            <h2 class="h6 mb-1">{{ d.name }}</h2>
+            <div>
+                <span class="badge text-bg-light border">{{ d.type }}</span>
+                {% if d.tracked %}
+                <a class="badge text-bg-secondary text-decoration-none" href="https://phabricator.wikimedia.org/{{ d.tracked }}">{{ d.tracked }}</a>
+                {% else %}
+                <span class="badge text-bg-danger">Not tracked</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="small text-muted mb-1">
+            {{ d.sections | length }} section{{ 's' if d.sections | length != 1 }}: {{ d.sections | join(', ') }}
+            &middot; {{ d.hosts | length }} host{{ 's' if d.hosts | length != 1 }}
+            &middot; <code class="drift-code">{{ d.code }}</code>
+            {% if not d.tracked %}
+            &middot; <a href="{{ url_for('set_tracking', name=d.code) }}">Set tracking</a>
+            or <a href="https://phabricator.wikimedia.org/maniphest/task/edit/form/1/">create a task</a>
+            {% endif %}
+        </div>
         <details>
-            <summary class="btn btn-light">See the list of drifts</summary>
-            <table class="table">
-                <thead>
-                <tr><th>section</th>
-                    <th>host</th>
-                    <th>db</th>
-                </tr></thead>
+            <summary class="small">Hosts</summary>
+            <table class="table table-sm table-striped small mt-2 mb-0">
+                <thead><tr><th>Section</th><th>Host</th><th>Wiki</th></tr></thead>
                 <tbody>
-                {% for drift in i.table %}
-                    <tr><td>{{drift[0]}}</td><td>{{drift[1]}}</td><td>{{drift[2]}}</td></tr>
+                {% for h in d.hosts %}
+                <tr><td>{{ h.section }}</td><td>{{ h.host }}</td><td>{{ h.wiki }}</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
         </details>
     </div>
-    {% endfor %}
+</div>
+{% endfor %}
+
+<script>
+(function () {
+    var search = document.getElementById('f-search');
+    if (!search) return;
+    var type = document.getElementById('f-type');
+    var status = document.getElementById('f-status');
+    var widespread = document.getElementById('f-widespread');
+    var count = document.getElementById('f-count');
+    var drifts = document.querySelectorAll('.drift');
+
+    function apply() {
+        var q = search.value.trim().toLowerCase();
+        var shown = 0;
+        drifts.forEach(function (el) {
+            var ok = (!q || el.dataset.search.toLowerCase().indexOf(q) !== -1) &&
+                (!type.value || el.dataset.type === type.value) &&
+                (!status.value || el.dataset.status === status.value) &&
+                (!widespread.checked || el.dataset.widespread === '1');
+            el.hidden = !ok;
+            if (ok) shown++;
+        });
+        count.textContent = shown + ' / ' + drifts.length;
+    }
+    [search, type, status, widespread].forEach(function (el) {
+        el.addEventListener('input', apply);
+    });
+    apply();
+})();
+</script>
+{% endif %}
 {% endblock %}

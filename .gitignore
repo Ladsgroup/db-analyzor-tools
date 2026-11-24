@@ -131,3 +131,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Drift reports, uploaded for drift-tracker
+/drifts/

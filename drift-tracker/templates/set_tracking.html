@@ -1,6 +1,10 @@
 {% extends "base.html" %}
+{% block title %}Set tracking · Drift tracker{% endblock %}
 {% block content %}
-Tracking is now set in https://wikitech.wikimedia.org/wiki/User:Ladsgroup/drifts.json
-
-Please change it there.
+<div class="alert alert-info">
+    Tracking is set in
+    <a href="https://wikitech.wikimedia.org/wiki/User:Ladsgroup/drifts.json" class="alert-link">User:Ladsgroup/drifts.json</a>
+    on Wikitech. Add the drift code{% if request.args.name %} <code>{{ request.args.name }}</code>{% endif %}
+    with its Phabricator task (for example <code>"T123456"</code>) there.
+</div>
 {% endblock %}

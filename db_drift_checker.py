@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -53,6 +54,11 @@ parser.add_argument(
 parser.add_argument(
     '--jobs', type=int, default=8,
     help='Number of database queries to run in parallel'
+)
+parser.add_argument(
+    '--output-dir', default='.',
+    help='Directory to write drifts_<source>.json files to, '
+         'drift-tracker reads them from drifts/ in this repository'
 )
 
 args = None
@@ -315,7 +321,8 @@ def run_checks(category):
             'time_start': time_start,
             'time_end': time.time()
         }
-        with open('drifts_{}.json'.format(source), 'w') as f:
+        path = os.path.join(args.output_dir, 'drifts_{}.json'.format(source))
+        with open(path, 'w') as f:
             f.write(json.dumps(source_drifts, indent=4, sort_keys=True))
 
 

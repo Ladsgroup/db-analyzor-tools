@@ -11,6 +11,9 @@ class Column():
         type_ = schema['type'].replace(
             'string', 'binary').replace('integer', 'int')
         size_ = schema['options'].get('length', 0)
+        # Renamed from CustomSchemaOptions in newer MediaWiki versions
+        platform_options = schema['options'].get(
+            'PlatformOptions', schema['options'].get('CustomSchemaOptions', {}))
 
         if type_ == 'binary' and not schema['options'].get(
                 'fixed'):
@@ -29,13 +32,9 @@ class Column():
         elif type_ == 'mwenum':
             type_ = 'enum'
             size_ = set([
-                i for i in schema['options'].get(
-                    'CustomSchemaOptions', {}).get(
-                    'enum_values', [])])
+                i for i in platform_options.get('enum_values', [])])
         elif type_ == 'mwtimestamp':
-            if schema['options'].get(
-                    'CustomSchemaOptions', {}).get(
-                    'allowInfinite', False):
+            if platform_options.get('allowInfinite', False):
                 type_ = 'varbinary'
             else:
                 type_ = 'binary'

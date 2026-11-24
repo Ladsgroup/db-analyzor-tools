@@ -21,6 +21,9 @@ TITLES = {
 # Drifts in more sections than this are "widespread"
 WIDESPREAD = 5
 
+# Wikis listed per checklist item, the rest is only counted
+CHECKLIST_WIKIS = 5
+
 
 def parse_drift(code, drift, tracking):
     # Code is "<table> <field or index> <type>"; the middle part can be empty
@@ -45,6 +48,58 @@ def parse_drift(code, drift, tracking):
     }
 
 
+def compact_hosts(hosts):
+    """Rows of (section, hosts, wikis); hosts of a section with the same wikis share a row."""
+    by_section = {}
+    for h in hosts:
+        by_section.setdefault(h['section'], {}).setdefault(h['host'], set()).add(h['wiki'])
+    rows = []
+    for section in sorted(by_section):
+        by_wikis = {}
+        for host, wikis in by_section[section].items():
+            by_wikis.setdefault(frozenset(wikis), []).append(host)
+        for wikis, hosts_ in sorted(by_wikis.items(), key=lambda i: sorted(i[1])):
+            rows.append({'section': section, 'hosts': sorted(hosts_), 'wikis': sorted(wikis)})
+    return rows
+
+
+def group_drifts(drifts):
+    """Group drifts that affect exactly the same hosts, keeping drift order."""
+    groups = {}
+    for d in drifts:
+        key = frozenset((h['section'], h['host'], h['wiki']) for h in d['hosts'])
+        groups.setdefault(key, []).append(d)
+    result = []
+    for members in groups.values():
+        hosts = members[0]['hosts']
+        result.append({
+            'drifts': members,
+            'rows': compact_hosts(hosts),
+            'sections': members[0]['sections'],
+            'host_count': len({h['host'] for h in hosts}),
+            'wiki_count': len({h['wiki'] for h in hosts}),
+        })
+    return result
+
+
+def phabricator_checklist(category, groups, url, end_time):
+    """Remarkup summary of all drifts, one checklist item per host row."""
+    lines = ['Schema drifts of `{}` found by {}{}.'.format(
+        category, url, ' (report of {})'.format(end_time) if end_time else '')]
+    for group in groups:
+        lines.append('')
+        for d in group['drifts']:
+            tracked = ' (tracked in {})'.format(d['tracked']) if d['tracked'] else ''
+            lines.append('* **{}** `{}`{}'.format(d['name'], d['code'], tracked))
+        lines.append('')
+        for row in group['rows']:
+            wikis = ', '.join(row['wikis'][:CHECKLIST_WIKIS])
+            if len(row['wikis']) > CHECKLIST_WIKIS:
+                wikis += ' and {} more'.format(len(row['wikis']) - CHECKLIST_WIKIS)
+            lines.append('[ ] {}: {} ({})'.format(row['section'], ', '.join(row['hosts']), wikis))
+    return '\n'.join(lines) + '\n'
+
+
 def format_time(timestamp):
     if not timestamp:
         return None
@@ -67,6 +122,7 @@ def get_report(category):
     start, end = metadata.get('time_start'), metadata.get('time_end')
     return {
         'drifts': drifts,
+        'groups': group_drifts(drifts),
         'types': sorted({d['type'] for d in drifts}),
         'stats': {
             'total': len(drifts),

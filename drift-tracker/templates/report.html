@@ -23,11 +23,22 @@
     </div></div>
 </div>
 
-{% if report.end_time %}
-<p class="small text-muted">
-    Report built {% if report.start_time %}from {{ report.start_time }} {% endif %}to {{ report.end_time }}
-    {% if report.duration %}({{ report.duration }} hours){% endif %}
-</p>
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <p class="small text-muted mb-0">
+        {% if report.end_time %}
+        Report built {% if report.start_time %}from {{ report.start_time }} {% endif %}to {{ report.end_time }}
+        {% if report.duration %}({{ report.duration }} hours){% endif %}
+        {% endif %}
+    </p>
+    {% if checklist %}
+    <button id="copy-checklist" type="button" class="btn btn-sm btn-outline-primary">Copy Phabricator checklist</button>
+    {% endif %}
+</div>
+{% if checklist %}
+<details class="mb-3">
+    <summary class="small">Show Phabricator checklist</summary>
+    <textarea id="checklist" class="form-control font-monospace small mt-2" rows="10" readonly>{{ checklist }}</textarea>
+</details>
 {% endif %}
 
 {% if report.drifts %}
@@ -60,40 +71,50 @@
 <div class="alert alert-success">No drifts found.</div>
 {% endif %}
 
-{% for d in report.drifts %}
-<div class="drift card mb-2 {{ 'tracked' if d.tracked else 'untracked' }}"
-     data-status="{{ 'tracked' if d.tracked else 'untracked' }}"
-     data-type="{{ d.type }}"
-     data-widespread="{{ 1 if d.widespread else 0 }}"
-     data-search="{{ d.code }} {% for h in d.hosts %}{{ h.host }} {{ h.wiki }} {% endfor %}">
-    <div class="card-body py-2">
-        <div class="d-flex flex-wrap justify-content-between gap-2">
-            <h2 class="h6 mb-1">{{ d.name }}</h2>
-            <div>
-                <span class="badge text-bg-light border">{{ d.type }}</span>
-                {% if d.tracked %}
-                <a class="badge text-bg-secondary text-decoration-none" href="https://phabricator.wikimedia.org/{{ d.tracked }}">{{ d.tracked }}</a>
-                {% else %}
-                <span class="badge text-bg-danger">Not tracked</span>
+{% for g in report.groups %}
+<div class="group card mb-3" data-search="{% for r in g.rows %}{{ r.hosts | join(' ') }} {{ r.wikis | join(' ') }} {% endfor %}">
+    <div class="card-header small text-muted">
+        {{ g.sections | length }} section{{ 's' if g.sections | length != 1 }} ({{ g.sections | join(', ') }})
+        &middot; {{ g.host_count }} host{{ 's' if g.host_count != 1 }}
+        &middot; {{ g.wiki_count }} wiki{{ 's' if g.wiki_count != 1 }}
+        {% if g.drifts | length > 1 %}&middot; {{ g.drifts | length }} drifts on the same hosts{% endif %}
+    </div>
+    <ul class="list-group list-group-flush">
+        {% for d in g.drifts %}
+        <li class="drift list-group-item {{ 'tracked' if d.tracked else 'untracked' }}"
+            data-status="{{ 'tracked' if d.tracked else 'untracked' }}"
+            data-type="{{ d.type }}"
+            data-widespread="{{ 1 if d.widespread else 0 }}"
+            data-search="{{ d.code }}">
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+                <h2 class="h6 mb-1">{{ d.name }}</h2>
+                <div>
+                    <span class="badge text-bg-light border">{{ d.type }}</span>
+                    {% if d.tracked %}
+                    <a class="badge text-bg-secondary text-decoration-none" href="https://phabricator.wikimedia.org/{{ d.tracked }}">{{ d.tracked }}</a>
+                    {% else %}
+                    <span class="badge text-bg-danger">Not tracked</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="small text-muted">
+                <code class="drift-code">{{ d.code }}</code>
+                {% if not d.tracked %}
+                &middot; <a href="{{ url_for('set_tracking', name=d.code) }}">Set tracking</a>
+                or <a href="https://phabricator.wikimedia.org/maniphest/task/edit/form/1/">create a task</a>
                 {% endif %}
             </div>
-        </div>
-        <div class="small text-muted mb-1">
-            {{ d.sections | length }} section{{ 's' if d.sections | length != 1 }}: {{ d.sections | join(', ') }}
-            &middot; {{ d.hosts | length }} host{{ 's' if d.hosts | length != 1 }}
-            &middot; <code class="drift-code">{{ d.code }}</code>
-            {% if not d.tracked %}
-            &middot; <a href="{{ url_for('set_tracking', name=d.code) }}">Set tracking</a>
-            or <a href="https://phabricator.wikimedia.org/maniphest/task/edit/form/1/">create a task</a>
-            {% endif %}
-        </div>
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="card-body py-2">
         <details>
-            <summary class="small">Hosts</summary>
-            <table class="table table-sm table-striped small mt-2 mb-0">
-                <thead><tr><th>Section</th><th>Host</th><th>Wiki</th></tr></thead>
+            <summary class="small">Affected hosts</summary>
+            <table class="table table-sm small mt-2 mb-0">
+                <thead><tr><th>Section</th><th>Hosts</th><th>Wikis</th></tr></thead>
                 <tbody>
-                {% for h in d.hosts %}
-                <tr><td>{{ h.section }}</td><td>{{ h.host }}</td><td>{{ h.wiki }}</td></tr>
+                {% for r in g.rows %}
+                <tr><td>{{ r.section }}</td><td>{{ r.hosts | join(', ') }}</td><td>{{ r.wikis | join(', ') }}</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -104,26 +125,48 @@
 
 <script>
 (function () {
+    var copy = document.getElementById('copy-checklist');
+    if (copy) {
+        copy.addEventListener('click', function () {
+            var text = document.getElementById('checklist').value;
+            navigator.clipboard.writeText(text).then(function () {
+                copy.textContent = 'Copied';
+                setTimeout(function () { copy.textContent = 'Copy Phabricator checklist'; }, 2000);
+            }, function () {
+                var area = document.getElementById('checklist');
+                area.closest('details').open = true;
+                area.select();
+            });
+        });
+    }
+
     var search = document.getElementById('f-search');
     if (!search) return;
     var type = document.getElementById('f-type');
     var status = document.getElementById('f-status');
     var widespread = document.getElementById('f-widespread');
     var count = document.getElementById('f-count');
-    var drifts = document.querySelectorAll('.drift');
+    var groups = document.querySelectorAll('.group');
+    var total = document.querySelectorAll('.drift').length;
 
     function apply() {
         var q = search.value.trim().toLowerCase();
         var shown = 0;
-        drifts.forEach(function (el) {
-            var ok = (!q || el.dataset.search.toLowerCase().indexOf(q) !== -1) &&
-                (!type.value || el.dataset.type === type.value) &&
-                (!status.value || el.dataset.status === status.value) &&
-                (!widespread.checked || el.dataset.widespread === '1');
-            el.hidden = !ok;
-            if (ok) shown++;
+        groups.forEach(function (group) {
+            var groupMatch = group.dataset.search.toLowerCase().indexOf(q) !== -1;
+            var visible = 0;
+            group.querySelectorAll('.drift').forEach(function (el) {
+                var ok = (!q || groupMatch || el.dataset.search.toLowerCase().indexOf(q) !== -1) &&
+                    (!type.value || el.dataset.type === type.value) &&
+                    (!status.value || el.dataset.status === status.value) &&
+                    (!widespread.checked || el.dataset.widespread === '1');
+                el.hidden = !ok;
+                if (ok) visible++;
+            });
+            group.hidden = visible === 0;
+            shown += visible;
         });
-        count.textContent = shown + ' / ' + drifts.length;
+        count.textContent = shown + ' / ' + total;
     }
     [search, type, status, widespread].forEach(function (el) {
         el.addEventListener('input', apply);
